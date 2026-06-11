@@ -64,5 +64,6 @@ def test_pr_doctor_generates_pr_comment_draft_for_failed_check() -> None:
     suggestion = artifact.action_suggestions[0]
     assert suggestion.action_type == "pr_comment"
     assert suggestion.target_ref == "pull_request:18"
+    assert "请先修复失败检查" in suggestion.draft_body
     assert "test" in suggestion.draft_body
     assert suggestion.evidence_refs == ["event_check-run-1", "event_pr-18"]

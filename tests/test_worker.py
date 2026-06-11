@@ -56,7 +56,7 @@ def test_worker_runs_risk_scout_with_evidence_bundle() -> None:
     assert server.succeeded_artifact.agent_type == "risk_scout"
     assert server.succeeded_artifact.status == "succeeded"
     assert server.succeeded_artifact.summary == (
-        "dev-time-agent is high risk because unit tests failed on main"
+        "dev-time-agent 当前为高风险，原因是：unit tests failed on main"
     )
     assert server.succeeded_artifact.evidence_refs == ["event_check-run-123"]
 
@@ -114,7 +114,7 @@ def test_worker_runs_pr_doctor_with_evidence_bundle() -> None:
 
     assert processed is True
     assert server.succeeded_artifact is not None
-    assert server.succeeded_artifact.summary == "PR #18 is blocked by a failing go test check."
+    assert server.succeeded_artifact.summary == "PR #18 被失败的 go test 检查阻塞。"
     assert len(server.succeeded_artifact.action_suggestions) == 1
     assert server.succeeded_artifact.action_suggestions[0].target_ref == "pull_request:18"
 

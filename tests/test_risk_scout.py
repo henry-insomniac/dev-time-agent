@@ -50,5 +50,6 @@ def test_risk_scout_explains_highest_risk_with_evidence_refs() -> None:
 
     assert artifact.status == "succeeded"
     assert artifact.agent_type == "risk_scout"
+    assert "当前为高风险" in artifact.summary
     assert "test failed" in artifact.summary
     assert artifact.evidence_refs == ["event_check-run-1"]

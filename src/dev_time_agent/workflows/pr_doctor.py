@@ -21,7 +21,7 @@ def run_pr_doctor(job: AgentJob, bundle: EvidenceBundle) -> AgentArtifact:
             risk_assessment_id=job.risk_assessment_id,
             agent_type=job.agent_type,
             status="succeeded",
-            summary="PR Doctor did not find enough PR and CI evidence to draft an action.",
+            summary="PR Doctor 没有找到足够的 PR 和 CI 证据，暂不生成行动草稿。",
             evidence_refs=evidence_refs,
         )
 
@@ -33,10 +33,10 @@ def run_pr_doctor(job: AgentJob, bundle: EvidenceBundle) -> AgentArtifact:
         action_type="pr_comment",
         target_ref=f"pull_request:{pr_number}",
         draft_body=(
-            f"{check_name} is failing on PR #{pr_number} ({pr_title}). "
-            "Please fix the failing check before requesting another review."
+            f"PR #{pr_number}（{pr_title}）当前的 {check_name} 检查失败。"
+            "请先修复失败检查，再请求下一轮 Review。"
         ),
-        reason="A failed check run is blocking PR review progress.",
+        reason="失败的 check run 正在阻塞 PR Review 进度。",
         evidence_refs=evidence_refs,
         required_permission="pull_request:write",
     )
@@ -47,7 +47,7 @@ def run_pr_doctor(job: AgentJob, bundle: EvidenceBundle) -> AgentArtifact:
         risk_assessment_id=job.risk_assessment_id,
         agent_type=job.agent_type,
         status="succeeded",
-        summary=f"PR #{pr_number} is blocked by a failing {check_name} check.",
+        summary=f"PR #{pr_number} 被失败的 {check_name} 检查阻塞。",
         evidence_refs=evidence_refs,
         action_suggestions=[suggestion],
     )
