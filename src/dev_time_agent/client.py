@@ -3,7 +3,12 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from dev_time_agent.schemas import AgentArtifact, AgentJob, EvidenceBundle
+from dev_time_agent.schemas import (
+    AgentArtifact,
+    AgentJob,
+    EvidenceBundle,
+    LLMProviderConfig,
+)
 
 
 class HTTPServerClient:
@@ -28,12 +33,16 @@ class HTTPServerClient:
         )
         return EvidenceBundle.model_validate(payload)
 
+    def get_llm_provider_config(self) -> LLMProviderConfig:
+        payload = self._request_json("GET", "/internal/llm-provider-config")
+        return LLMProviderConfig.model_validate(payload)
+
     def complete_agent_job(self, artifact: AgentArtifact) -> None:
         payload = {
             "summary": artifact.summary,
             "evidence_refs": artifact.evidence_refs,
-            "model": "deterministic",
-            "prompt_version": "dev-time-agent@v1",
+            "model": artifact.model,
+            "prompt_version": artifact.prompt_version,
             "action_suggestions": [
                 {
                     "action_type": suggestion.action_type,

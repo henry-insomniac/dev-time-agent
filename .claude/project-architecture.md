@@ -132,3 +132,4 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-11 | 增加 Risk Scout workflow | EvidenceBundle 可生成带 evidence_refs 的 AgentArtifact | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 增加 PR Doctor workflow | PR/CI 证据可生成 PR comment ActionSuggestion 草稿 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 接入 Server internal HTTP client 和 workflow 路由 | Agent worker 可 claim、获取 EvidenceBundle、运行 Risk Scout / PR Doctor 并回写结果 | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 接入 OpenAI-compatible LLM 调用 | Agent worker 可从 server internal API 获取 active OpenAI/DeepSeek 配置，并用结构化 JSON 输出生成 AgentArtifact | `uv run ruff check . && uv run pytest` |

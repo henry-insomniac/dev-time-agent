@@ -22,6 +22,12 @@ def test_http_server_client_claims_fetches_evidence_and_completes_job() -> None:
         assert evidence_bundle.project.name == "dev-time-server"
         assert evidence_bundle.signals[0].evidence_refs == ["event_check-run-123"]
 
+        llm_provider = client.get_llm_provider_config()
+        assert llm_provider.provider == "openai"
+        assert llm_provider.base_url == "http://127.0.0.1:11434/v1"
+        assert llm_provider.model == "gpt-4.1"
+        assert llm_provider.api_key == "sk-test"
+
         client.complete_agent_job(
             AgentArtifact(
                 job_id=job.job_id,
@@ -113,6 +119,17 @@ def fake_dev_time_server(state: dict[str, Any]) -> Iterator[str]:
                         ],
                         "events": [],
                         "allowed_actions": ["pr_comment"],
+                    }
+                )
+                return
+
+            if self.path == "/internal/llm-provider-config":
+                self.send_json(
+                    {
+                        "provider": "openai",
+                        "base_url": "http://127.0.0.1:11434/v1",
+                        "model": "gpt-4.1",
+                        "api_key": "sk-test",
                     }
                 )
                 return

@@ -46,6 +46,7 @@ Go 版 Agent 可作为后续实验，但不作为 MVP 默认方案。
 
 - AgentJob 只携带 ID 和触发上下文，不携带大量 GitHub 原始数据。
 - EvidenceBundle 必须通过 `dev-time-server` internal API 获取，避免绕过权限和事实源边界。
+- LLM Provider 必须通过 `dev-time-server` 的 internal API 获取，当前只支持 OpenAI 和 DeepSeek 的 OpenAI-compatible `/chat/completions` 调用。
 - 所有 Agent 输出必须是结构化对象，并包含 `evidence_refs`。
 - 证据不足时返回 `insufficient_evidence`，不得编造 GitHub object、风险原因或行动建议。
 - Agent 只生成 ActionSuggestion 草稿，不直接执行 GitHub 写入。
@@ -86,7 +87,7 @@ fixtures/
 - 函数签名必须有类型标注；复杂返回值使用具名 model 或 dataclass。
 - workflow 分成 context loading、prompt rendering、model call、output validation、artifact mapping 五段。
 - prompt 模板和 Python 控制逻辑分离；不要把长 prompt 字符串塞进 workflow 函数体。
-- LLM 调用必须有 timeout、retry 策略和结构化输出校验。
+- LLM 调用必须有 timeout 和结构化输出校验；重试策略在引入成本和幂等控制后补齐。
 - 日志只记录对象 ID、状态、模型、耗时和错误摘要，不记录密钥或 private repo 非必要全文。
 - eval fixture 必须可离线运行，避免依赖实时 GitHub API。
 

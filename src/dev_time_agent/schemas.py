@@ -18,6 +18,8 @@ class AgentArtifact(BaseModel):
     summary: str
     evidence_refs: list[str]
     action_suggestions: list["ActionSuggestion"] = Field(default_factory=list)
+    model: str = "deterministic"
+    prompt_version: str = "dev-time-agent@v1"
 
 
 class ActionSuggestion(BaseModel):
@@ -27,6 +29,13 @@ class ActionSuggestion(BaseModel):
     reason: str
     evidence_refs: list[str]
     required_permission: str
+
+
+class LLMProviderConfig(BaseModel):
+    provider: str
+    base_url: str
+    model: str
+    api_key: str
 
 
 class ProjectSummary(BaseModel):

@@ -41,6 +41,8 @@ Agent 是 Dev Time 的核心能力，不只是后端里的一个 LLM helper。�
 
 负责模型调用、模型路由、结构化输出校验、token 和成本记录。LLM key 的所有权和审计仍归 `dev-time-server`。
 
+MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读取 active provider，并使用 OpenAI-compatible `/chat/completions` 调用 OpenAI 或 DeepSeek。公开设置 API 不回传明文 key，只有 agent internal 调用能拿到解密后的 provider config。
+
 ### Tool Layer
 
 只提供读工具和草稿生成工具，不直接执行 GitHub 写入。
@@ -264,7 +266,7 @@ dev-time-agent/
 - Contextual Conversation workflow。
 - ActionSuggestion schema。
 - AgentRun log。
-- LLM provider adapter。
+- OpenAI-compatible LLM provider adapter。
 
 阶段 2 增加评估：
 
