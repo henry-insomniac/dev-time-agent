@@ -51,7 +51,8 @@
     ├── skill-authoring.md
     ├── bug-fix-log.md
     ├── git-collaboration.md
-    └── tech-stack.md
+    ├── tech-stack.md
+    └── coding-standards.md
 ```
 
 ## 目录职责
@@ -67,6 +68,14 @@ Agent 入口文件。用于说明项目目标、协作原则和关键文档索�
 ### `.claude/dev-time-agent-architecture.md`
 
 Agent Runtime 服务设计草案。定义 AgentJob、EvidenceBundle、AgentArtifact、首批 workflows、通信方式和安全边界。
+
+### `.claude/tech-stack.md`
+
+Agent Runtime 技术栈、工具链、脚本、依赖、安全和验证规范。当前定稿为 Python + uv + Pydantic。
+
+### `.claude/coding-standards.md`
+
+Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数约束和评审检查项。
 
 ### `.agents/skills/`
 
