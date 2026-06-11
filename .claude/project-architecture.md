@@ -36,12 +36,31 @@
 
 ## 当前目录结构
 
-请在项目初始化后补充真实目录结构。
-
 ```text
 .
+├── .env.example
 ├── .gitignore
 ├── AGENTS.md
+├── src/
+│   └── dev_time_agent/
+│       ├── __init__.py
+│       ├── buildinfo.py
+│       ├── client.py
+│       ├── schemas.py
+│       ├── worker.py
+│       └── workflows/
+│           ├── __init__.py
+│           ├── pr_doctor.py
+│           └── risk_scout.py
+├── tests/
+│   ├── test_buildinfo.py
+│   ├── test_evidence_bundle_schema.py
+│   ├── test_pr_doctor.py
+│   ├── test_risk_scout.py
+│   ├── test_server_client.py
+│   └── test_worker.py
+├── pyproject.toml
+├── uv.lock
 └── .claude/
     ├── README.md
     ├── product-prd.md
@@ -77,6 +96,14 @@ Agent Runtime 技术栈、工具链、脚本、依赖、安全和验证规范。
 
 Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数约束和评审检查项。
 
+### `src/dev_time_agent/`
+
+Agent Runtime Python 包。当前包含 buildinfo smoke test、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；后续按 context、llm、tools、evals 扩展。
+
+### `tests/`
+
+Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑定内部实现。
+
 ### `.agents/skills/`
 
 可选的项目级 Agent Skills 目录。只有在项目明确需要可复用 Agent 工作流时才创建。新增 skill 时，应同步说明触发条件、输入输出、验证方式和安全边界。
@@ -99,3 +126,9 @@ Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数
 | --- | --- | --- | --- |
 | 2026-06-11 | 初始化 Agent 项目文档 | 建立项目长期上下文和协作基线 | 已创建 `AGENTS.md` 与 `.claude` 文档 |
 | 2026-06-11 | 同步 Dev Time 三服务架构和 Agent Runtime 草案 | 明确 `dev-time-agent` 作为独立 Agent 服务的边界 | 已同步 `product-prd.md`、`technical-architecture.md` 与 `dev-time-agent-architecture.md` |
+| 2026-06-11 | 初始化 Python Agent 工程骨架 | 建立 M0 可验证 Agent Runtime 基础 | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 增加 AgentJob worker 骨架 | 建立 M8 AgentJob 消费和 AgentArtifact 回写切片 | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 增加 EvidenceBundle schema | Agent 可校验 server internal evidence bundle payload | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 增加 Risk Scout workflow | EvidenceBundle 可生成带 evidence_refs 的 AgentArtifact | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 增加 PR Doctor workflow | PR/CI 证据可生成 PR comment ActionSuggestion 草稿 | `uv run ruff check . && uv run pytest` |
+| 2026-06-11 | 接入 Server internal HTTP client 和 workflow 路由 | Agent worker 可 claim、获取 EvidenceBundle、运行 Risk Scout / PR Doctor 并回写结果 | `uv run ruff check . && uv run pytest` |

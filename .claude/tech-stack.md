@@ -102,7 +102,7 @@ fixtures/
 
 ## 脚本规范
 
-项目初始化后建议提供：
+当前已提供：
 
 ```bash
 uv sync
@@ -138,12 +138,10 @@ MVP 阶段避免过早引入重型 Agent 框架。优先使用薄 workflow 编�
 
 ## 验证规范
 
-当前仓库尚未初始化 Python 工程。初始化后最小验证命令为：
+当前 M0 最小验证命令为：
 
 ```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run pytest
+uv run ruff check . && uv run pytest
 ```
 
 涉及 prompt、workflow、schema 或 provider adapter 时，必须补充 replay fixture 或 snapshot 测试。
