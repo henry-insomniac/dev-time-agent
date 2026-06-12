@@ -13,6 +13,7 @@
 - `.claude/product-prd.md`：产品定位、MVP、风险模型、Agent 场景和视觉方向。
 - `.claude/technical-architecture.md`：跨端技术架构、数据流、核心模块、Agent Runtime、LLM Gateway 和 SVG 架构图。
 - `.claude/dev-time-agent-architecture.md`：本仓库作为 Agent Runtime 服务的定位、边界、工作流、数据契约和安全约束。
+- `.claude/agent-quality-metrics.md`：Agent 服务质量指标、度量公式、合格线、采集来源和发布门禁。
 - `.claude/README.md`：文档索引和维护规则。
 - `.claude/project-architecture.md`：项目架构、目录职责和扩展方式。
 - `.claude/skill-authoring.md`：项目级 skills 的编写、安装和维护规范。
@@ -25,6 +26,7 @@
 
 - 先阅读本文件和 `.claude/README.md`，再修改项目结构或新增规范。
 - 涉及产品定位、MVP、风险模型、Agent 场景或跨端技术架构时，同步更新 `dev-time`、`dev-time-server` 和 `dev-time-agent` 三个仓库中的 `.claude/product-prd.md`、`.claude/technical-architecture.md` 与 `.claude/dev-time-agent-architecture.md`。
+- 调整 Agent 能力、风险回答、工具调用、记忆、长任务、人类确认或 eval 体系时，必须对照 `.claude/agent-quality-metrics.md` 补充或更新可度量验收指标。
 - 修改项目结构时，同步更新 `.claude/project-architecture.md`。
 - 新增或调整项目级 skill 时，同步更新 `.claude/skill-authoring.md`。
 - 修复问题后更新 `.claude/bug-fix-log.md`，包含现象、原因、修复方式和验证结果。
