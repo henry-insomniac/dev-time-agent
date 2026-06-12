@@ -18,6 +18,23 @@ def test_conversation_runtime_handles_greeting_without_risk_evidence() -> None:
     assert response.evidence_refs == []
 
 
+def test_conversation_runtime_introduces_itself_without_risk_evidence() -> None:
+    response = answer_conversation_turn(
+        ConversationTurnRequest(
+            conversation_id="conversation_project_repo_1001",
+            project_id="project_repo_1001",
+            risk_assessment_id="risk_project_repo_1001",
+            message="介绍你自己",
+        ),
+        evidence_bundle(),
+    )
+
+    assert response.intent == "self_intro"
+    assert "Dev Time Agent" in response.agent_response
+    assert "项目风险" in response.agent_response
+    assert response.evidence_refs == []
+
+
 def test_conversation_runtime_explains_risk_with_evidence_refs() -> None:
     response = answer_conversation_turn(
         ConversationTurnRequest(

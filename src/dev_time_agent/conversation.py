@@ -21,6 +21,18 @@ def answer_conversation_turn(
             evidence_refs=[],
             intent="smalltalk",
         )
+    if intent == "self_intro":
+        return ConversationTurnResponse(
+            conversation_id=request.conversation_id,
+            user_message=request.message,
+            agent_response=(
+                "我是 Dev Time Agent，定位是项目风险驱动助手。"
+                "我会围绕项目、PR、测试、CI 和交付阻塞来识别风险、解释证据、"
+                "生成行动计划，并在需要执行工具前请求确认。"
+            ),
+            evidence_refs=[],
+            intent="self_intro",
+        )
 
     evidence_refs = evidence_refs_from_bundle(bundle)
     if intent == "action_plan":
@@ -53,6 +65,11 @@ def classify_intent(message: str) -> str:
     normalized = message.strip().lower()
     if normalized in {"你好", "您好", "hi", "hello", "hey"}:
         return "smalltalk"
+    if any(
+        keyword in normalized
+        for keyword in {"介绍", "你是谁", "你能做什么", "自我介绍", "介绍你自己"}
+    ):
+        return "self_intro"
     if any(keyword in normalized for keyword in {"行动", "计划", "下一步", "怎么做"}):
         return "action_plan"
     return "risk_explain"
