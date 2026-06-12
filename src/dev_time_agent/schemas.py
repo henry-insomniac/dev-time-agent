@@ -74,3 +74,18 @@ class EvidenceBundle(BaseModel):
     signals: list[RiskSignal]
     events: list[EvidenceEvent]
     allowed_actions: list[str]
+
+
+class ConversationTurnRequest(BaseModel):
+    conversation_id: str
+    project_id: str
+    risk_assessment_id: str
+    message: str
+
+
+class ConversationTurnResponse(BaseModel):
+    conversation_id: str
+    user_message: str
+    agent_response: str
+    evidence_refs: list[str]
+    intent: str
