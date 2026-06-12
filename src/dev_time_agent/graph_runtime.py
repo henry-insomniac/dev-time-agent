@@ -5,6 +5,8 @@ from langgraph.graph import END, START, StateGraph
 from dev_time_agent.conversation import classify_intent, evidence_refs_from_bundle
 from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle
 
+_SESSION_MEMORY: dict[str, dict[str, Any]] = {}
+
 
 class AgentState(TypedDict, total=False):
     session_id: str
@@ -17,11 +19,16 @@ class AgentState(TypedDict, total=False):
     requires_evidence: bool
     evidence_bundle: EvidenceBundle | None
     evidence_refs: list[str]
+    memory: dict[str, Any]
     response: str
     current_node: str
     trace_events: list[dict[str, str]]
     tool_calls: list[dict[str, Any]]
     approval_request: dict[str, Any] | None
+
+
+def reset_session_memory_for_tests() -> None:
+    _SESSION_MEMORY.clear()
 
 
 def run_agent_session_turn(
@@ -42,11 +49,13 @@ def run_agent_session_turn(
             "risk_assessment_id": risk_assessment_id,
             "user_message": message,
             "evidence_bundle": evidence_bundle,
+            "memory": dict(_SESSION_MEMORY.get(session_id, {})),
             "trace_events": [],
             "tool_calls": [],
             "approval_request": None,
         }
     )
+    persist_session_memory(state)
     return AgentSessionTurnResponse(
         session_id=state["session_id"],
         conversation_id=state["conversation_id"],
@@ -105,6 +114,22 @@ def build_agent_graph():
 
 def intent_router(state: AgentState) -> AgentState:
     classification = classify_intent(state["user_message"])
+    memory = state.get("memory", {})
+    if classification.intent == "clarify" and is_follow_up_action_request(
+        state["user_message"]
+    ):
+        if memory.get("last_risk_reason") or memory.get("last_evidence_refs"):
+            return {
+                **state,
+                "intent": "action_plan",
+                "confidence": 0.82,
+                "requires_evidence": True,
+                "current_node": "intent_router",
+                "trace_events": [
+                    *state.get("trace_events", []),
+                    {"node": "intent_router", "title": "识别为上下文追问"},
+                ],
+            }
     trace_title = "识别为项目状态查询"
     if classification.intent != "project_status":
         trace_title = "完成意图识别"
@@ -136,15 +161,23 @@ def route_after_intent(state: AgentState) -> str:
 
 def context_loader(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
+    memory = state.get("memory", {})
     evidence_refs = evidence_refs_from_bundle(bundle) if bundle is not None else []
+    memory_used = False
+    if not evidence_refs and memory.get("last_evidence_refs"):
+        evidence_refs = list(memory["last_evidence_refs"])
+        memory_used = True
+    trace_events = [
+        *state.get("trace_events", []),
+        {"node": "context_loader", "title": "加载风险证据"},
+    ]
+    if memory_used:
+        trace_events.append({"node": "memory_retriever", "title": "读取会话记忆"})
     return {
         **state,
         "evidence_refs": evidence_refs,
         "current_node": "context_loader",
-        "trace_events": [
-            *state.get("trace_events", []),
-            {"node": "context_loader", "title": "加载风险证据"},
-        ],
+        "trace_events": trace_events,
     }
 
 
@@ -201,8 +234,17 @@ def clarify_responder(state: AgentState) -> AgentState:
 
 def status_reporter(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
+    memory = state.get("memory", {})
     if state.get("intent") != "project_status" or bundle is None:
-        response = "你想让我评估当前风险、解释证据，还是生成下一步行动计划？"
+        if memory.get("last_project_name") and memory.get("last_risk_level"):
+            response = (
+                f"当前项目 {memory['last_project_name']} 处于"
+                f"{format_risk_level(memory['last_risk_level'])}状态，"
+                f"风险分 {memory.get('last_risk_score', '未知')}。"
+                f"主要阻塞：{memory.get('last_risk_reason', '暂无活跃风险信号')}"
+            )
+        else:
+            response = "你想让我评估当前风险、解释证据，还是生成下一步行动计划？"
     else:
         reason = bundle.signals[0].reason if bundle.signals else "暂无活跃风险信号"
         response = (
@@ -222,7 +264,8 @@ def status_reporter(state: AgentState) -> AgentState:
 
 def risk_analyst(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
-    reason = "暂无活跃风险信号"
+    memory = state.get("memory", {})
+    reason = memory.get("last_risk_reason", "暂无活跃风险信号")
     if bundle is not None and bundle.signals:
         reason = bundle.signals[0].reason
     return {
@@ -238,7 +281,8 @@ def risk_analyst(state: AgentState) -> AgentState:
 
 def planner(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
-    reason = "暂无活跃风险信号"
+    memory = state.get("memory", {})
+    reason = memory.get("last_risk_reason", "暂无活跃风险信号")
     if bundle is not None and bundle.signals:
         reason = bundle.signals[0].reason
     return {
@@ -262,3 +306,28 @@ def format_risk_level(level: str) -> str:
         "low": "低风险",
     }
     return labels.get(level, level)
+
+
+def is_follow_up_action_request(message: str) -> bool:
+    normalized = message.strip().lower()
+    return normalized in {"下一步呢", "然后呢", "接下来呢", "继续呢", "那怎么办"}
+
+
+def persist_session_memory(state: AgentState) -> None:
+    session_id = state["session_id"]
+    memory = dict(_SESSION_MEMORY.get(session_id, {}))
+    bundle = state.get("evidence_bundle")
+    evidence_refs = state.get("evidence_refs", [])
+
+    memory["last_intent"] = state.get("intent")
+    if evidence_refs:
+        memory["last_evidence_refs"] = list(evidence_refs)
+    if bundle is not None:
+        memory["last_project_name"] = bundle.project.name
+        memory["last_risk_score"] = bundle.assessment.score
+        memory["last_risk_level"] = bundle.assessment.level
+        if bundle.signals:
+            memory["last_risk_reason"] = bundle.signals[0].reason
+
+    if memory.get("last_risk_reason") or memory.get("last_evidence_refs"):
+        _SESSION_MEMORY[session_id] = memory

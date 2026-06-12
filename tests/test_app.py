@@ -1,7 +1,12 @@
 from fastapi.testclient import TestClient
 
 from dev_time_agent.app import app
+from dev_time_agent.graph_runtime import reset_session_memory_for_tests
 from dev_time_agent.schemas import EvidenceBundle
+
+
+def setup_function() -> None:
+    reset_session_memory_for_tests()
 
 
 def test_conversation_turn_endpoint_uses_runtime() -> None:
@@ -183,6 +188,44 @@ def test_agent_session_turn_plans_next_action_through_graph() -> None:
     assert "行动计划" in response.json()["agent_response"]
     assert "test failed and is blocking progress." in response.json()["agent_response"]
     assert response.json()["evidence_refs"] == ["event_check-run-1"]
+
+
+def test_agent_session_turn_uses_session_memory_for_follow_up_plan() -> None:
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "为什么这是高风险？",
+            "evidence_bundle": evidence_bundle().model_dump(),
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    follow_up_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "下一步呢",
+        },
+    )
+
+    assert follow_up_response.status_code == 200
+    assert follow_up_response.json()["intent"] == "action_plan"
+    assert follow_up_response.json()["current_node"] == "planner"
+    assert "行动计划" in follow_up_response.json()["agent_response"]
+    assert "test failed and is blocking progress." in follow_up_response.json()["agent_response"]
+    assert follow_up_response.json()["evidence_refs"] == ["event_check-run-1"]
+    assert {
+        "node": "memory_retriever",
+        "title": "读取会话记忆",
+    } in follow_up_response.json()["trace_events"]
 
 
 def evidence_bundle() -> EvidenceBundle:
