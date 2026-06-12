@@ -98,3 +98,22 @@ class IntentClassification(BaseModel):
     requires_tool: bool = False
     requires_approval: bool = False
     clarifying_question: str = ""
+
+
+class AgentTraceEvent(BaseModel):
+    node: str
+    title: str
+
+
+class AgentSessionTurnResponse(BaseModel):
+    session_id: str
+    conversation_id: str
+    user_message: str
+    agent_response: str
+    intent: str
+    confidence: float
+    evidence_refs: list[str]
+    current_node: str
+    trace_events: list[AgentTraceEvent]
+    tool_calls: list[dict] = Field(default_factory=list)
+    approval_request: dict | None = None

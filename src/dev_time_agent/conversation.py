@@ -89,7 +89,24 @@ def classify_intent(message: str) -> IntentClassification:
         )
     if any(
         keyword in normalized
-        for keyword in {"介绍", "你是谁", "你能做什么", "自我介绍", "介绍你自己"}
+        for keyword in {"当前状态", "项目状态", "现在状态", "现在怎么样"}
+    ):
+        return IntentClassification(
+            intent="project_status",
+            confidence=0.9,
+            requires_evidence=True,
+        )
+    if any(
+        keyword in normalized
+        for keyword in {
+            "介绍你自己",
+            "你是谁",
+            "你能做什么",
+            "自我介绍",
+            "认识你",
+            "了解你",
+            "怎么用你",
+        }
     ):
         return IntentClassification(
             intent="self_intro",

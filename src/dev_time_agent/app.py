@@ -1,8 +1,9 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from dev_time_agent.conversation import answer_conversation_turn, classify_intent
-from dev_time_agent.schemas import ConversationTurnRequest, EvidenceBundle
+from dev_time_agent.conversation import classify_intent
+from dev_time_agent.graph_runtime import run_agent_session_turn
+from dev_time_agent.schemas import EvidenceBundle
 
 
 class ConversationIntentPayload(BaseModel):
@@ -33,12 +34,33 @@ def conversation_turn(payload: ConversationTurnPayload):
     project_id = payload.project_id
     if payload.evidence_bundle is not None:
         project_id = payload.evidence_bundle.project.id
-    return answer_conversation_turn(
-        ConversationTurnRequest(
-            conversation_id=payload.conversation_id,
-            project_id=project_id or "",
-            risk_assessment_id=payload.risk_assessment_id,
-            message=payload.message,
-        ),
-        payload.evidence_bundle,
+    graph_response = run_agent_session_turn(
+        session_id="legacy_" + payload.conversation_id,
+        conversation_id=payload.conversation_id,
+        project_id=project_id or "",
+        risk_assessment_id=payload.risk_assessment_id,
+        message=payload.message,
+        evidence_bundle=payload.evidence_bundle,
+    )
+    return {
+        "conversation_id": graph_response.conversation_id,
+        "user_message": graph_response.user_message,
+        "agent_response": graph_response.agent_response,
+        "evidence_refs": graph_response.evidence_refs,
+        "intent": graph_response.intent,
+    }
+
+
+@app.post("/agent/sessions/{session_id}/turns")
+def agent_session_turn(session_id: str, payload: ConversationTurnPayload):
+    project_id = payload.project_id
+    if payload.evidence_bundle is not None:
+        project_id = payload.evidence_bundle.project.id
+    return run_agent_session_turn(
+        session_id=session_id,
+        conversation_id=payload.conversation_id,
+        project_id=project_id or "",
+        risk_assessment_id=payload.risk_assessment_id,
+        message=payload.message,
+        evidence_bundle=payload.evidence_bundle,
     )

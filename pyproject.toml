@@ -5,6 +5,7 @@ description = "Dev Time Agent Runtime"
 requires-python = ">=3.13"
 dependencies = [
   "fastapi",
+  "langgraph>=1.2.4",
   "pydantic",
   "uvicorn",
 ]
