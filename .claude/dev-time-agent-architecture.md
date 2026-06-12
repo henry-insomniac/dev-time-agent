@@ -51,6 +51,8 @@ MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读�
 
 负责在当前风险上下文中回答用户追问。它不是泛用聊天能力，只能围绕当前 EvidenceBundle、AgentArtifact、ActionSuggestion 和 allowed actions 解释风险、验证证据、说明影响或生成行动草稿。
 
+会话记忆只保存对话连续性所需的短期摘要，例如上一轮意图、风险原因、风险等级和 evidence_refs。它用于处理“下一步呢”“然后呢”这类上下文追问，不替代 `dev-time-server` 的事实源。运行时默认使用进程内 memory；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite store 持久化 session memory，服务重启后仍可继续围绕上一轮风险上下文回答。
+
 ### Eval System
 
 负责 fixture、replay、snapshot 和质量回归，保证 Agent 可迭代。
@@ -192,7 +194,7 @@ dev-time-server
 dev-time
 -> 用户在 Agent dock 提问
 -> dev-time-server 校验项目权限和 EvidenceBundle 新鲜度
--> dev-time-agent 使用 EvidenceBundle + AgentArtifact + conversation summary 生成回答
+-> dev-time-agent 使用 EvidenceBundle + AgentArtifact + session memory 生成回答
 -> dev-time-agent 返回 ConversationTurn 和 evidence_refs
 -> dev-time-server 保存 turn
 -> dev-time 展示回答并高亮证据

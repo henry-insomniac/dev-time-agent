@@ -13,6 +13,7 @@ Agent 服务技术栈定稿如下：
 | API / Internal Endpoint | FastAPI | 如需 internal HTTP endpoint，使用类型提示和 Pydantic schema |
 | Worker | Python worker process | MVP 优先消费 AgentJob，HTTP 只作为内部管理或对话入口 |
 | Schema | Pydantic | 定义 EvidenceBundle、AgentArtifact、ConversationTurn、ActionSuggestion |
+| Session Memory | SQLite 可选 / in-memory 默认 | `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 设置后持久化对话短期上下文；未设置时使用进程内存 |
 | Lint / Format | Ruff | 统一 lint 和 format，减少工具链复杂度 |
 | 测试 | pytest | 覆盖 workflow、schema、prompt rendering、eval fixture 和 replay |
 | 类型检查 | pyright 或 mypy | 项目初始化时二选一；Agent 数据契约必须静态可检查 |
@@ -47,6 +48,7 @@ Go 版 Agent 可作为后续实验，但不作为 MVP 默认方案。
 - AgentJob 只携带 ID 和触发上下文，不携带大量 GitHub 原始数据。
 - EvidenceBundle 必须通过 `dev-time-server` internal API 获取，避免绕过权限和事实源边界。
 - LLM Provider 必须通过 `dev-time-server` 的 internal API 获取，当前只支持 OpenAI 和 DeepSeek 的 OpenAI-compatible `/chat/completions` 调用。
+- Session memory 只保存 Agent 对话连续性需要的短期摘要，不维护 canonical state；事实源仍必须来自 `dev-time-server`。
 - 所有 Agent 输出必须是结构化对象，并包含 `evidence_refs`。
 - 证据不足时返回 `insufficient_evidence`，不得编造 GitHub object、风险原因或行动建议。
 - Agent 只生成 ActionSuggestion 草稿，不直接执行 GitHub 写入。
@@ -56,28 +58,22 @@ Go 版 Agent 可作为后续实验，但不作为 MVP 默认方案。
 
 ## 目录建议
 
-项目初始化后建议采用以下结构：
+当前实现采用以下结构：
 
 ```text
-src/
-├── dev_time_agent/
-│   ├── app/
-│   ├── config/
-│   ├── context/
-│   ├── workflows/
-│   │   ├── risk_scout/
-│   │   ├── pr_doctor/
-│   │   ├── milestone_planner/
-│   │   ├── scope_guard/
-│   │   ├── daily_brief/
-│   │   └── action_drafter/
-│   ├── llm/
-│   ├── schemas/
-│   ├── tools/
-│   ├── evals/
-│   └── artifacts/
-tests/
-fixtures/
+src/dev_time_agent/
+├── app.py
+├── client.py
+├── conversation.py
+├── graph_runtime.py
+├── llm.py
+├── memory.py
+├── runner.py
+├── schemas.py
+├── worker.py
+└── workflows/
+    ├── pr_doctor.py
+    └── risk_scout.py
 ```
 
 ## Python 代码规范
@@ -88,6 +84,7 @@ fixtures/
 - workflow 分成 context loading、prompt rendering、model call、output validation、artifact mapping 五段。
 - prompt 模板和 Python 控制逻辑分离；不要把长 prompt 字符串塞进 workflow 函数体。
 - LLM 调用必须有 timeout 和结构化输出校验；重试策略在引入成本和幂等控制后补齐。
+- Session memory 持久化优先使用标准库 SQLite；仅在需要跨实例共享、清理策略或审计能力时再升级为 server 管理的 Postgres/Redis。
 - 日志只记录对象 ID、状态、模型、耗时和错误摘要，不记录密钥或 private repo 非必要全文。
 - eval fixture 必须可离线运行，避免依赖实时 GitHub API。
 
@@ -142,7 +139,7 @@ MVP 阶段避免过早引入重型 Agent 框架。优先使用薄 workflow 编�
 当前 M0 最小验证命令为：
 
 ```bash
-uv run ruff check . && uv run pytest
+uv run ruff check . && uv run pytest -q
 ```
 
 涉及 prompt、workflow、schema 或 provider adapter 时，必须补充 replay fixture 或 snapshot 测试。

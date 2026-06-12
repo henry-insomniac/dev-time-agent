@@ -44,8 +44,14 @@
 ├── src/
 │   └── dev_time_agent/
 │       ├── __init__.py
+│       ├── app.py
 │       ├── buildinfo.py
 │       ├── client.py
+│       ├── conversation.py
+│       ├── graph_runtime.py
+│       ├── llm.py
+│       ├── memory.py
+│       ├── runner.py
 │       ├── schemas.py
 │       ├── worker.py
 │       └── workflows/
@@ -54,9 +60,14 @@
 │           └── risk_scout.py
 ├── tests/
 │   ├── test_buildinfo.py
+│   ├── test_app.py
+│   ├── test_conversation_runtime.py
 │   ├── test_evidence_bundle_schema.py
+│   ├── test_llm_worker.py
+│   ├── test_memory.py
 │   ├── test_pr_doctor.py
 │   ├── test_risk_scout.py
+│   ├── test_runner.py
 │   ├── test_server_client.py
 │   └── test_worker.py
 ├── pyproject.toml
@@ -98,7 +109,11 @@ Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数
 
 ### `src/dev_time_agent/`
 
-Agent Runtime Python 包。当前包含 buildinfo smoke test、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；后续按 context、llm、tools、evals 扩展。
+Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation graph、session memory store、LLM adapter、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；对话 runtime 通过 EvidenceBundle 和 session memory 支持围绕风险上下文的多轮追问。
+
+### `src/dev_time_agent/memory.py`
+
+Session memory 存储边界。默认使用进程内 in-memory store；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite JSON store 持久化每个 session 的风险摘要、证据引用和上一轮意图。该模块只保存 Agent 推理所需的短期上下文，不保存 canonical 项目状态；事实源仍归 `dev-time-server`。
 
 ### `tests/`
 
@@ -133,3 +148,4 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-11 | 增加 PR Doctor workflow | PR/CI 证据可生成 PR comment ActionSuggestion 草稿 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 接入 Server internal HTTP client 和 workflow 路由 | Agent worker 可 claim、获取 EvidenceBundle、运行 Risk Scout / PR Doctor 并回写结果 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 接入 OpenAI-compatible LLM 调用 | Agent worker 可从 server internal API 获取 active OpenAI/DeepSeek 配置，并用结构化 JSON 输出生成 AgentArtifact | `uv run ruff check . && uv run pytest` |
+| 2026-06-12 | 增加 LangGraph 会话 runtime 与可持久化 session memory | Agent 对话需要支持围绕同一风险上下文的多轮追问，服务重载后仍可继续使用上一轮风险摘要 | `uv run ruff check . && uv run pytest -q` |

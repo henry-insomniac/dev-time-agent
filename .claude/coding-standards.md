@@ -11,6 +11,7 @@
 - 所有 Agent 输出必须包含 evidence refs；证据不足时返回明确状态。
 - prompt、schema、workflow 和 eval fixture 必须可独立演进。
 - Agent 不直接写 GitHub，不绕过 `dev-time-server` 权限校验。
+- Session memory 只保存对话短期上下文摘要，例如上一轮风险原因、证据引用和意图；不得把它当作 canonical 项目状态。
 
 ## Python 代码规范
 
@@ -20,6 +21,7 @@
 - workflow 分层为 context loading、prompt rendering、model call、output validation、artifact mapping。
 - prompt 模板和 Python 控制逻辑分离。
 - LLM adapter 必须处理 timeout、retry、结构化输出校验和错误分类。
+- Memory store 必须隐藏具体存储实现。Graph node 只能通过 store 接口读取/写入 session memory，不直接操作 SQL、文件或全局 dict。
 - 日志只记录对象 ID、状态、模型、耗时和错误摘要。
 
 ## Agent 工作流规范

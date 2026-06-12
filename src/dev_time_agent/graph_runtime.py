@@ -3,9 +3,13 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from dev_time_agent.conversation import classify_intent, evidence_refs_from_bundle
+from dev_time_agent.memory import (
+    SessionMemoryStore,
+    build_session_memory_store_from_env,
+)
 from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle
 
-_SESSION_MEMORY: dict[str, dict[str, Any]] = {}
+_SESSION_MEMORY_STORE: SessionMemoryStore = build_session_memory_store_from_env()
 
 
 class AgentState(TypedDict, total=False):
@@ -28,7 +32,12 @@ class AgentState(TypedDict, total=False):
 
 
 def reset_session_memory_for_tests() -> None:
-    _SESSION_MEMORY.clear()
+    _SESSION_MEMORY_STORE.clear()
+
+
+def configure_session_memory_store_for_tests(store: SessionMemoryStore) -> None:
+    global _SESSION_MEMORY_STORE
+    _SESSION_MEMORY_STORE = store
 
 
 def run_agent_session_turn(
@@ -49,7 +58,7 @@ def run_agent_session_turn(
             "risk_assessment_id": risk_assessment_id,
             "user_message": message,
             "evidence_bundle": evidence_bundle,
-            "memory": dict(_SESSION_MEMORY.get(session_id, {})),
+            "memory": _SESSION_MEMORY_STORE.get(session_id),
             "trace_events": [],
             "tool_calls": [],
             "approval_request": None,
@@ -315,7 +324,7 @@ def is_follow_up_action_request(message: str) -> bool:
 
 def persist_session_memory(state: AgentState) -> None:
     session_id = state["session_id"]
-    memory = dict(_SESSION_MEMORY.get(session_id, {}))
+    memory = _SESSION_MEMORY_STORE.get(session_id)
     bundle = state.get("evidence_bundle")
     evidence_refs = state.get("evidence_refs", [])
 
@@ -330,4 +339,4 @@ def persist_session_memory(state: AgentState) -> None:
             memory["last_risk_reason"] = bundle.signals[0].reason
 
     if memory.get("last_risk_reason") or memory.get("last_evidence_refs"):
-        _SESSION_MEMORY[session_id] = memory
+        _SESSION_MEMORY_STORE.put(session_id, memory)

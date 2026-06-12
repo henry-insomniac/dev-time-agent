@@ -1,11 +1,16 @@
 from fastapi.testclient import TestClient
 
 from dev_time_agent.app import app
-from dev_time_agent.graph_runtime import reset_session_memory_for_tests
+from dev_time_agent.graph_runtime import (
+    configure_session_memory_store_for_tests,
+    reset_session_memory_for_tests,
+)
+from dev_time_agent.memory import InMemorySessionMemoryStore, SQLiteSessionMemoryStore
 from dev_time_agent.schemas import EvidenceBundle
 
 
 def setup_function() -> None:
+    configure_session_memory_store_for_tests(InMemorySessionMemoryStore())
     reset_session_memory_for_tests()
 
 
@@ -226,6 +231,44 @@ def test_agent_session_turn_uses_session_memory_for_follow_up_plan() -> None:
         "node": "memory_retriever",
         "title": "读取会话记忆",
     } in follow_up_response.json()["trace_events"]
+
+
+def test_agent_session_memory_survives_runtime_store_reload(tmp_path) -> None:
+    memory_path = tmp_path / "session-memory.sqlite3"
+    configure_session_memory_store_for_tests(SQLiteSessionMemoryStore(memory_path))
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "为什么这是高风险？",
+            "evidence_bundle": evidence_bundle().model_dump(),
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    configure_session_memory_store_for_tests(SQLiteSessionMemoryStore(memory_path))
+    restarted_client = TestClient(app)
+    follow_up_response = restarted_client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "下一步呢",
+        },
+    )
+
+    assert follow_up_response.status_code == 200
+    assert follow_up_response.json()["intent"] == "action_plan"
+    assert "test failed and is blocking progress." in follow_up_response.json()[
+        "agent_response"
+    ]
+    assert follow_up_response.json()["evidence_refs"] == ["event_check-run-1"]
 
 
 def evidence_bundle() -> EvidenceBundle:
