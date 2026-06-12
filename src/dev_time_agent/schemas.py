@@ -89,3 +89,12 @@ class ConversationTurnResponse(BaseModel):
     agent_response: str
     evidence_refs: list[str]
     intent: str
+
+
+class IntentClassification(BaseModel):
+    intent: str
+    confidence: float
+    requires_evidence: bool
+    requires_tool: bool = False
+    requires_approval: bool = False
+    clarifying_question: str = ""

@@ -2,15 +2,16 @@ from dev_time_agent.schemas import (
     ConversationTurnRequest,
     ConversationTurnResponse,
     EvidenceBundle,
+    IntentClassification,
 )
 
 
 def answer_conversation_turn(
     request: ConversationTurnRequest,
-    bundle: EvidenceBundle,
+    bundle: EvidenceBundle | None,
 ) -> ConversationTurnResponse:
-    intent = classify_intent(request.message)
-    if intent == "smalltalk":
+    classification = classify_intent(request.message)
+    if classification.intent == "smalltalk":
         return ConversationTurnResponse(
             conversation_id=request.conversation_id,
             user_message=request.message,
@@ -21,7 +22,7 @@ def answer_conversation_turn(
             evidence_refs=[],
             intent="smalltalk",
         )
-    if intent == "self_intro":
+    if classification.intent == "self_intro":
         return ConversationTurnResponse(
             conversation_id=request.conversation_id,
             user_message=request.message,
@@ -33,9 +34,26 @@ def answer_conversation_turn(
             evidence_refs=[],
             intent="self_intro",
         )
+    if classification.intent == "clarify":
+        return ConversationTurnResponse(
+            conversation_id=request.conversation_id,
+            user_message=request.message,
+            agent_response=classification.clarifying_question,
+            evidence_refs=[],
+            intent="clarify",
+        )
+
+    if bundle is None:
+        return ConversationTurnResponse(
+            conversation_id=request.conversation_id,
+            user_message=request.message,
+            agent_response="我需要先看到当前项目证据，才能继续处理这个请求。",
+            evidence_refs=[],
+            intent="clarify",
+        )
 
     evidence_refs = evidence_refs_from_bundle(bundle)
-    if intent == "action_plan":
+    if classification.intent == "action_plan":
         first_reason = (
             bundle.signals[0].reason if bundle.signals else "暂无活跃风险信号"
         )
@@ -61,18 +79,44 @@ def answer_conversation_turn(
     )
 
 
-def classify_intent(message: str) -> str:
+def classify_intent(message: str) -> IntentClassification:
     normalized = message.strip().lower()
     if normalized in {"你好", "您好", "hi", "hello", "hey"}:
-        return "smalltalk"
+        return IntentClassification(
+            intent="smalltalk",
+            confidence=1,
+            requires_evidence=False,
+        )
     if any(
         keyword in normalized
         for keyword in {"介绍", "你是谁", "你能做什么", "自我介绍", "介绍你自己"}
     ):
-        return "self_intro"
+        return IntentClassification(
+            intent="self_intro",
+            confidence=0.95,
+            requires_evidence=False,
+        )
     if any(keyword in normalized for keyword in {"行动", "计划", "下一步", "怎么做"}):
-        return "action_plan"
-    return "risk_explain"
+        return IntentClassification(
+            intent="action_plan",
+            confidence=0.9,
+            requires_evidence=True,
+        )
+    if any(
+        keyword in normalized
+        for keyword in {"风险", "证据", "为什么", "高风险", "阻塞", "测试", "ci", "pr"}
+    ):
+        return IntentClassification(
+            intent="risk_explain",
+            confidence=0.9,
+            requires_evidence=True,
+        )
+    return IntentClassification(
+        intent="clarify",
+        confidence=0.35,
+        requires_evidence=False,
+        clarifying_question="你想让我评估当前风险、解释证据，还是生成下一步行动计划？",
+    )
 
 
 def evidence_refs_from_bundle(bundle: EvidenceBundle) -> list[str]:

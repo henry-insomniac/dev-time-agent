@@ -67,6 +67,24 @@ def test_conversation_runtime_routes_action_plan_requests() -> None:
     assert response.evidence_refs == ["event_check-run-1"]
 
 
+def test_conversation_runtime_clarifies_ambiguous_requests_without_risk_evidence() -> None:
+    response = answer_conversation_turn(
+        ConversationTurnRequest(
+            conversation_id="conversation_project_repo_1001",
+            project_id="project_repo_1001",
+            risk_assessment_id="risk_project_repo_1001",
+            message="你怎么看",
+        ),
+        evidence_bundle(),
+    )
+
+    assert response.intent == "clarify"
+    assert "当前风险原因" not in response.agent_response
+    assert "test failed" not in response.agent_response
+    assert "你想让我" in response.agent_response
+    assert response.evidence_refs == []
+
+
 def evidence_bundle() -> EvidenceBundle:
     return EvidenceBundle.model_validate(
         {

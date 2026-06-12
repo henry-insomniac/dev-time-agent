@@ -30,6 +30,30 @@ def test_conversation_turn_endpoint_uses_runtime() -> None:
     }
 
 
+def test_conversation_intent_endpoint_does_not_require_evidence_bundle() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/conversation/intent",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "missing-risk",
+            "message": "你怎么看",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "intent": "clarify",
+        "confidence": 0.35,
+        "requires_evidence": False,
+        "requires_tool": False,
+        "requires_approval": False,
+        "clarifying_question": "你想让我评估当前风险、解释证据，还是生成下一步行动计划？",
+    }
+
+
 def evidence_bundle() -> EvidenceBundle:
     return EvidenceBundle.model_validate(
         {
