@@ -130,6 +130,16 @@ class AgentTraceEvent(BaseModel):
     title: str
 
 
+class ReasoningTraceStep(BaseModel):
+    stage: str
+    title: str
+    summary: str
+    status: str = "completed"
+    confidence: float | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    tool_call: dict | None = None
+
+
 class AgentSessionTurnResponse(BaseModel):
     session_id: str
     conversation_id: str
@@ -142,3 +152,4 @@ class AgentSessionTurnResponse(BaseModel):
     trace_events: list[AgentTraceEvent]
     tool_calls: list[dict] = Field(default_factory=list)
     approval_request: dict | None = None
+    reasoning_trace: list[ReasoningTraceStep] = Field(default_factory=list)

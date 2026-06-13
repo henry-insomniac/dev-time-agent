@@ -209,6 +209,71 @@ def test_agent_session_turn_executes_planned_read_tool_before_generating_respons
     ]
 
 
+def test_agent_session_turn_returns_collapsible_reasoning_trace() -> None:
+    with fake_dev_time_server() as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(
+            FakeConversationLLM(
+                expected_user_message="为什么这是高风险？",
+                plan=AgentPlan(
+                    intent="risk_explain",
+                    confidence=0.94,
+                    needs_evidence=True,
+                    needs_tools=True,
+                    tool_names=["risk_evidence.read"],
+                    answer_strategy="explain_risk_with_evidence",
+                    reasoning_summary="用户要求解释高风险，需要读取风险证据。",
+                    safety_notes=[],
+                ),
+                draft=AgentDraftResponse(
+                    answer="当前高风险来自 go test failed，正在阻塞交付。",
+                    evidence_refs=["event_check-run-123"],
+                    suggested_actions=[],
+                    reasoning_summary="基于风险证据生成解释。",
+                    confidence=0.9,
+                ),
+                verification=ResponseVerification(
+                    passed=True,
+                    issues=[],
+                    rewrite_instruction="",
+                ),
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_123",
+                "message": "为什么这是高风险？",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    reasoning_trace = body["reasoning_trace"]
+    assert [step["stage"] for step in reasoning_trace] == [
+        "context",
+        "planning",
+        "tool_call",
+        "generation",
+        "verification",
+    ]
+    assert reasoning_trace[1]["title"] == "识别用户意图"
+    assert reasoning_trace[1]["summary"] == "用户要求解释高风险，需要读取风险证据。"
+    assert reasoning_trace[1]["confidence"] == 0.94
+    assert reasoning_trace[2]["tool_call"]["name"] == "risk_evidence.read"
+    assert reasoning_trace[2]["evidence_refs"] == ["event_check-run-123"]
+    assert reasoning_trace[4]["status"] == "completed"
+    serialized_trace = str(reasoning_trace).lower()
+    assert "chain-of-thought" not in serialized_trace
+    assert "prompt" not in serialized_trace
+
+
 def test_agent_session_turn_uses_server_llm_provider_config(monkeypatch) -> None:
     llm_state: dict[str, Any] = {"requests": []}
     with (
@@ -310,4 +375,18 @@ def test_agent_session_turn_requests_approval_for_suggested_write_actions() -> N
     }
     assert {"node": "approval_gate", "title": "等待用户确认写操作"} in body[
         "trace_events"
+    ]
+    approval_steps = [
+        step for step in body["reasoning_trace"] if step["stage"] == "approval"
+    ]
+    assert approval_steps == [
+        {
+            "stage": "approval",
+            "title": "等待用户确认写操作",
+            "summary": "检测到写操作草稿，用户确认前不会执行。",
+            "status": "completed",
+            "confidence": None,
+            "evidence_refs": ["event_check-run-123"],
+            "tool_call": None,
+        }
     ]

@@ -128,6 +128,11 @@ Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation
 - `conversation_llm.py`：OpenAI-compatible 三段式结构化对话 LLM adapter。
 - `graph_state.py`：graph state 和 conversation LLM 协议。
 
+对话 runtime 的公开响应包含两类过程数据：
+
+- `trace_events`：兼容旧前端和 server trace 事件。
+- `reasoning_trace`：面向 UI 的可审计思考过程，只包含 stage、title、summary、confidence、evidence_refs 和 tool_call 摘要；写操作门禁必须包含 `approval` 步骤；不得返回模型原始 chain-of-thought、prompt、密钥或完整私有上下文。
+
 ### `src/dev_time_agent/tools.py`
 
 Tool Layer 边界。当前提供 `risk_evidence.read` 只读工具，通过 `dev-time-server` internal API 根据 `risk_assessment_id` 获取 EvidenceBundle，并把工具调用结果记录到 `tool_calls` 和 trace。工具层不得直接写 GitHub，不得绕过 `dev-time-server` 的事实源和权限边界。
@@ -172,3 +177,4 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-12 | 增加 LangGraph 会话 runtime 与可持久化 session memory | Agent 对话需要支持围绕同一风险上下文的多轮追问，服务重载后仍可继续使用上一轮风险摘要 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 增加 Tool Layer 首个只读工具 | Agent Runtime 可在缺少请求内 EvidenceBundle 时自行调用 `risk_evidence.read` 获取证据，并返回 `tool_calls` 追踪 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 会话 Agent 接入 LLM 主导回路和审批门 | 解决关键词路由导致答非所问、未真实调用配置 LLM、写操作缺少确认边界的问题 | `uv run ruff check . && uv run pytest -q` |
+| 2026-06-13 | 增加可展示 reasoning_trace | 前端需要默认折叠、手动展开的可审计思考过程，而不是暴露原始模型推理 | `uv run ruff check . && uv run pytest -q` |

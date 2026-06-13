@@ -74,6 +74,7 @@ context_assembler
 - 风险解释或行动计划必须在需要时调用 `risk_evidence.read`，并返回 evidence_refs。
 - LLM 草稿必须经过 verifier；答非所问时使用 verifier 提供的改写。
 - LLM 生成写操作草稿时只能返回 `approval_request`，用户确认前不得执行外部写入。
+- 每轮对话必须返回 `reasoning_trace`，供前端默认折叠展示可审计思考过程；写操作门禁必须追加 `approval` 步骤；该字段只能包含摘要、阶段、证据和工具调用，不得包含模型原始 chain-of-thought、prompt 或密钥。
 
 ### Eval System
 

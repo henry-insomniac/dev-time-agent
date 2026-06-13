@@ -118,6 +118,17 @@ def test_agent_session_turn_reports_project_status_through_graph() -> None:
         ],
         "tool_calls": [],
         "approval_request": None,
+        "reasoning_trace": [
+            {
+                "stage": "context",
+                "title": "组装上下文",
+                "summary": "当前请求已携带风险证据。",
+                "status": "completed",
+                "confidence": None,
+                "evidence_refs": [],
+                "tool_call": None,
+            },
+        ],
     }
 
 

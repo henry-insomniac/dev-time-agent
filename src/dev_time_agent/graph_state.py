@@ -4,6 +4,7 @@ from dev_time_agent.schemas import (
     AgentDraftResponse,
     AgentPlan,
     EvidenceBundle,
+    ReasoningTraceStep,
     ResponseVerification,
 )
 
@@ -47,5 +48,6 @@ class AgentState(TypedDict, total=False):
     response: str
     current_node: str
     trace_events: list[dict[str, str]]
+    reasoning_trace: list[ReasoningTraceStep]
     tool_calls: list[dict[str, Any]]
     approval_request: dict[str, Any] | None

@@ -93,6 +93,7 @@ def run_agent_session_turn(
             "evidence_bundle": evidence_bundle,
             "memory": _SESSION_MEMORY_STORE.get(session_id),
             "trace_events": [],
+            "reasoning_trace": [],
             "tool_calls": [],
             "approval_request": None,
         }
@@ -110,6 +111,7 @@ def run_agent_session_turn(
         trace_events=state.get("trace_events", []),
         tool_calls=state.get("tool_calls", []),
         approval_request=state.get("approval_request"),
+        reasoning_trace=state.get("reasoning_trace", []),
     )
 
 

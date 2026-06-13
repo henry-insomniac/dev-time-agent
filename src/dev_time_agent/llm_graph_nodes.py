@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 from dev_time_agent.context import assemble_agent_context
 from dev_time_agent.graph_state import AgentState, ConversationLLM
+from dev_time_agent.schemas import ReasoningTraceStep
 from dev_time_agent.tools import ToolRegistry
 
 
@@ -29,6 +30,9 @@ def configure_llm_graph_node_dependencies(
 
 def context_assembler(state: AgentState) -> AgentState:
     available_tools = ["risk_evidence.read"] if _tool_registry_provider() else []
+    evidence_summary = "当前请求未携带风险证据。"
+    if state.get("evidence_bundle") is not None:
+        evidence_summary = "当前请求已携带风险证据。"
     return {
         **state,
         "agent_context": assemble_agent_context(
@@ -43,6 +47,14 @@ def context_assembler(state: AgentState) -> AgentState:
         "trace_events": [
             *state.get("trace_events", []),
             {"node": "context_assembler", "title": "组装 Agent 上下文"},
+        ],
+        "reasoning_trace": [
+            *state.get("reasoning_trace", []),
+            ReasoningTraceStep(
+                stage="context",
+                title="组装上下文",
+                summary=evidence_summary,
+            ),
         ],
     }
 
@@ -68,6 +80,15 @@ def llm_planner(state: AgentState) -> AgentState:
         "trace_events": [
             *state.get("trace_events", []),
             {"node": "llm_planner", "title": "完成 LLM 规划"},
+        ],
+        "reasoning_trace": [
+            *state.get("reasoning_trace", []),
+            ReasoningTraceStep(
+                stage="planning",
+                title="识别用户意图",
+                summary=plan.reasoning_summary,
+                confidence=plan.confidence,
+            ),
         ],
     }
 
@@ -119,6 +140,16 @@ def llm_tool_executor(state: AgentState) -> AgentState:
             *state.get("trace_events", []),
             {"node": "tool_executor", "title": "调用风险证据工具"},
         ],
+        "reasoning_trace": [
+            *state.get("reasoning_trace", []),
+            ReasoningTraceStep(
+                stage="tool_call",
+                title="读取风险证据",
+                summary="调用 risk_evidence.read 获取当前风险证据。",
+                evidence_refs=evidence_refs,
+                tool_call=tool_calls[-1],
+            ),
+        ],
     }
 
 
@@ -140,6 +171,16 @@ def response_generator(state: AgentState) -> AgentState:
             *state.get("trace_events", []),
             {"node": "response_generator", "title": "生成 LLM 回复"},
         ],
+        "reasoning_trace": [
+            *state.get("reasoning_trace", []),
+            ReasoningTraceStep(
+                stage="generation",
+                title="生成回答",
+                summary=draft.reasoning_summary,
+                confidence=draft.confidence,
+                evidence_refs=draft.evidence_refs,
+            ),
+        ],
     }
 
 
@@ -157,6 +198,7 @@ def response_verifier(state: AgentState) -> AgentState:
         response = verification.rewrite_instruction or "我需要更多上下文才能可靠回答。"
     approval_request = None
     trace_events = list(state.get("trace_events", []))
+    reasoning_trace = list(state.get("reasoning_trace", []))
     if verification.passed and state["draft_response"].suggested_actions:
         approval_request = {
             "status": "pending",
@@ -164,7 +206,20 @@ def response_verifier(state: AgentState) -> AgentState:
             "actions": state["draft_response"].suggested_actions,
         }
         trace_events.append({"node": "approval_gate", "title": "等待用户确认写操作"})
+        reasoning_trace.append(
+            ReasoningTraceStep(
+                stage="approval",
+                title="等待用户确认写操作",
+                summary="检测到写操作草稿，用户确认前不会执行。",
+                evidence_refs=_approval_evidence_refs(
+                    state["draft_response"].suggested_actions,
+                ),
+            )
+        )
     trace_title = "审核回复通过" if verification.passed else "审核回复未通过"
+    verification_summary = "回复通过审核。"
+    if not verification.passed:
+        verification_summary = "回复未通过审核，已使用安全改写。"
     return {
         **state,
         "response_verification": verification,
@@ -175,4 +230,22 @@ def response_verifier(state: AgentState) -> AgentState:
             *trace_events,
             {"node": "response_verifier", "title": trace_title},
         ],
+        "reasoning_trace": [
+            *reasoning_trace,
+            ReasoningTraceStep(
+                stage="verification",
+                title=trace_title,
+                summary=verification_summary,
+                evidence_refs=state.get("evidence_refs", []),
+            ),
+        ],
     }
+
+
+def _approval_evidence_refs(suggested_actions: list[dict]) -> list[str]:
+    evidence_refs: list[str] = []
+    for action in suggested_actions:
+        for evidence_ref in action.get("evidence_refs", []):
+            if evidence_ref not in evidence_refs:
+                evidence_refs.append(evidence_ref)
+    return evidence_refs
