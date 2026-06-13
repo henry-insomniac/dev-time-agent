@@ -95,6 +95,7 @@ def run_agent_session_turn(
             "trace_events": [],
             "reasoning_trace": [],
             "tool_calls": [],
+            "tool_results": {},
             "approval_request": None,
         }
     )

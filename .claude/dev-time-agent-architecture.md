@@ -47,7 +47,15 @@ MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读�
 
 只提供读工具和草稿生成工具，不直接执行 GitHub 写入。
 
-当前已落地的首个工具是 `risk_evidence.read`。它通过 `dev-time-server` internal API 按 `risk_assessment_id` 获取 EvidenceBundle，用于 Agent Runtime 在请求没有直接携带证据包时自行补齐风险上下文。工具调用必须写入 `tool_calls`，并在 trace 中记录工具执行节点，便于前端和 eval 系统审计。
+当前已落地工具：
+
+- `risk_evidence.read`：按 `risk_assessment_id` 获取 EvidenceBundle。
+- `project_status.read`：读取项目风险分、风险等级、最高风险原因和证据引用。
+- `ci_checks.read`：读取当前风险相关 CI/check_run 事实。
+- `pull_request.read`：读取当前风险相关 PR 事实。
+- `action_suggestion.create`：只创建 `pending_user_confirmation` 行动草稿，不执行 GitHub 写入。
+
+所有工具调用必须写入 `tool_calls`，并在 trace / reasoning_trace 中记录工具执行节点，便于前端和 eval 系统审计。
 
 ### Contextual Conversation
 

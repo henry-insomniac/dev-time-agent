@@ -33,6 +33,27 @@ class HTTPServerClient:
         )
         return EvidenceBundle.model_validate(payload)
 
+    def get_project_status(self, risk_assessment_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/risk-assessments/{risk_assessment_id}/project-status",
+        )
+
+    def get_ci_checks(self, risk_assessment_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/risk-assessments/{risk_assessment_id}/ci-checks",
+        )
+
+    def get_pull_requests(self, risk_assessment_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/risk-assessments/{risk_assessment_id}/pull-requests",
+        )
+
+    def create_action_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request_json("POST", "/internal/action-suggestions", payload)
+
     def get_llm_provider_config(self) -> LLMProviderConfig:
         payload = self._request_json("GET", "/internal/llm-provider-config")
         return LLMProviderConfig.model_validate(payload)

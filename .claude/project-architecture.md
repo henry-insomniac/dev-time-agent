@@ -135,7 +135,7 @@ Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation
 
 ### `src/dev_time_agent/tools.py`
 
-Tool Layer 边界。当前提供 `risk_evidence.read` 只读工具，通过 `dev-time-server` internal API 根据 `risk_assessment_id` 获取 EvidenceBundle，并把工具调用结果记录到 `tool_calls` 和 trace。工具层不得直接写 GitHub，不得绕过 `dev-time-server` 的事实源和权限边界。
+Tool Layer 边界。当前提供 `risk_evidence.read`、`project_status.read`、`ci_checks.read`、`pull_request.read` 和 `action_suggestion.create`。读工具通过 `dev-time-server` internal API 根据 `risk_assessment_id` 获取事实；`action_suggestion.create` 只创建待确认草稿，不执行 GitHub 写入。所有工具调用结果必须记录到 `tool_calls` 和 trace。工具层不得绕过 `dev-time-server` 的事实源和权限边界。
 
 ### `src/dev_time_agent/memory.py`
 

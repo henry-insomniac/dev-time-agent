@@ -50,4 +50,5 @@ class AgentState(TypedDict, total=False):
     trace_events: list[dict[str, str]]
     reasoning_trace: list[ReasoningTraceStep]
     tool_calls: list[dict[str, Any]]
+    tool_results: dict[str, Any]
     approval_request: dict[str, Any] | None

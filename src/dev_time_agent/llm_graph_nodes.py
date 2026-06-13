@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+from dev_time_agent.action_drafts import create_action_suggestion_drafts
 from dev_time_agent.context import assemble_agent_context
 from dev_time_agent.graph_state import AgentState, ConversationLLM
 from dev_time_agent.schemas import ReasoningTraceStep
@@ -29,7 +30,8 @@ def configure_llm_graph_node_dependencies(
 
 
 def context_assembler(state: AgentState) -> AgentState:
-    available_tools = ["risk_evidence.read"] if _tool_registry_provider() else []
+    tool_registry = _tool_registry_provider()
+    available_tools = tool_registry.names() if tool_registry else []
     evidence_summary = "当前请求未携带风险证据。"
     if state.get("evidence_bundle") is not None:
         evidence_summary = "当前请求已携带风险证据。"
@@ -42,6 +44,7 @@ def context_assembler(state: AgentState) -> AgentState:
             memory=state.get("memory", {}),
             evidence_bundle=state.get("evidence_bundle"),
             available_tools=available_tools,
+            tool_results=state.get("tool_results", {}),
         ),
         "current_node": "context_assembler",
         "trace_events": [
@@ -105,29 +108,55 @@ def llm_tool_executor(state: AgentState) -> AgentState:
     if tool_registry is None:
         return state
     plan = state["agent_plan"]
-    if "risk_evidence.read" not in plan.tool_names and not plan.needs_evidence:
+    tool_names = list(plan.tool_names)
+    if plan.needs_evidence and not tool_names:
+        tool_names.append("risk_evidence.read")
+    if not tool_names:
         return state
 
-    tool_input = {"risk_assessment_id": state["risk_assessment_id"]}
-    tool_result = tool_registry.run("risk_evidence.read", tool_input)
-    evidence_bundle = tool_result.evidence_bundle
-    evidence_refs = tool_result.evidence_refs
-    tool_calls = [
-        *state.get("tool_calls", []),
-        {
-            "name": "risk_evidence.read",
-            "status": "succeeded",
-            "input": tool_input,
-            "evidence_refs": evidence_refs,
-        },
-    ]
+    evidence_bundle = state.get("evidence_bundle")
+    evidence_refs = list(state.get("evidence_refs", []))
+    tool_calls = list(state.get("tool_calls", []))
+    tool_results = dict(state.get("tool_results", {}))
+    reasoning_trace = list(state.get("reasoning_trace", []))
+    trace_events = list(state.get("trace_events", []))
+
+    for tool_name in tool_names:
+        if tool_name == "action_suggestion.create":
+            continue
+        tool_input = tool_input_for(tool_name, state)
+        tool_result = tool_registry.run(tool_name, tool_input)
+        if tool_result.evidence_bundle is not None:
+            evidence_bundle = tool_result.evidence_bundle
+        evidence_refs = unique_values([*evidence_refs, *tool_result.evidence_refs])
+        tool_results[tool_name] = tool_result.data
+        tool_calls.append(
+            {
+                "name": tool_name,
+                "status": "succeeded",
+                "input": tool_input,
+                "evidence_refs": tool_result.evidence_refs,
+            }
+        )
+        trace_events.append({"node": "tool_executor", "title": tool_title(tool_name)})
+        reasoning_trace.append(
+            ReasoningTraceStep(
+                stage="tool_call",
+                title=tool_title(tool_name),
+                summary=f"调用 {tool_name} 获取当前风险上下文。",
+                evidence_refs=tool_result.evidence_refs,
+                tool_call=tool_calls[-1],
+            )
+        )
+
     context = assemble_agent_context(
         user_message=state["user_message"],
         project_id=state["project_id"],
         risk_assessment_id=state["risk_assessment_id"],
         memory=state.get("memory", {}),
         evidence_bundle=evidence_bundle,
-        available_tools=["risk_evidence.read"],
+        available_tools=tool_registry.names(),
+        tool_results=tool_results,
     )
     return {
         **state,
@@ -135,21 +164,10 @@ def llm_tool_executor(state: AgentState) -> AgentState:
         "evidence_bundle": evidence_bundle,
         "evidence_refs": evidence_refs,
         "tool_calls": tool_calls,
+        "tool_results": tool_results,
         "current_node": "llm_tool_executor",
-        "trace_events": [
-            *state.get("trace_events", []),
-            {"node": "tool_executor", "title": "调用风险证据工具"},
-        ],
-        "reasoning_trace": [
-            *state.get("reasoning_trace", []),
-            ReasoningTraceStep(
-                stage="tool_call",
-                title="读取风险证据",
-                summary="调用 risk_evidence.read 获取当前风险证据。",
-                evidence_refs=evidence_refs,
-                tool_call=tool_calls[-1],
-            ),
-        ],
+        "trace_events": trace_events,
+        "reasoning_trace": reasoning_trace,
     }
 
 
@@ -199,11 +217,23 @@ def response_verifier(state: AgentState) -> AgentState:
     approval_request = None
     trace_events = list(state.get("trace_events", []))
     reasoning_trace = list(state.get("reasoning_trace", []))
+    tool_calls = list(state.get("tool_calls", []))
     if verification.passed and state["draft_response"].suggested_actions:
+        suggested_actions = list(state["draft_response"].suggested_actions)
+        tool_registry = _tool_registry_provider()
+        if tool_registry is not None:
+            suggested_actions = create_action_suggestion_drafts(
+                state,
+                suggested_actions,
+                tool_registry,
+                tool_calls,
+                trace_events,
+                reasoning_trace,
+            )
         approval_request = {
             "status": "pending",
             "reason": "LLM 生成了需要用户确认的写操作。",
-            "actions": state["draft_response"].suggested_actions,
+            "actions": suggested_actions,
         }
         trace_events.append({"node": "approval_gate", "title": "等待用户确认写操作"})
         reasoning_trace.append(
@@ -224,6 +254,7 @@ def response_verifier(state: AgentState) -> AgentState:
         **state,
         "response_verification": verification,
         "response": response,
+        "tool_calls": tool_calls,
         "approval_request": approval_request,
         "current_node": "response_verifier",
         "trace_events": [
@@ -249,3 +280,36 @@ def _approval_evidence_refs(suggested_actions: list[dict]) -> list[str]:
             if evidence_ref not in evidence_refs:
                 evidence_refs.append(evidence_ref)
     return evidence_refs
+
+
+def tool_input_for(tool_name: str, state: AgentState) -> dict:
+    if tool_name in {
+        "risk_evidence.read",
+        "project_status.read",
+        "ci_checks.read",
+        "pull_request.read",
+    }:
+        return {"risk_assessment_id": state["risk_assessment_id"]}
+    return {}
+
+
+def tool_title(tool_name: str) -> str:
+    labels = {
+        "risk_evidence.read": "调用风险证据工具",
+        "project_status.read": "读取项目状态",
+        "ci_checks.read": "读取 CI 检查",
+        "pull_request.read": "读取 Pull Request",
+        "action_suggestion.create": "创建行动草稿",
+    }
+    return labels.get(tool_name, f"调用工具 {tool_name}")
+
+
+def unique_values(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique

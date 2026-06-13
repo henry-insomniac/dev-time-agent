@@ -32,6 +32,7 @@ def assemble_agent_context(
     memory: dict[str, Any],
     evidence_bundle: EvidenceBundle | None,
     available_tools: list[str],
+    tool_results: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "agent_identity": "Dev Time 项目风险 Agent",
@@ -42,6 +43,7 @@ def assemble_agent_context(
         "risk_assessment_id": risk_assessment_id,
         "session_memory": memory,
         "available_tools": available_tools,
+        "tool_results": tool_results or {},
         "evidence_summary": summarize_evidence(evidence_bundle),
     }
 
