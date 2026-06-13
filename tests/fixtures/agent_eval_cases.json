@@ -1,0 +1,68 @@
+[
+  {
+    "id": "smalltalk_hello",
+    "user_message": "你好",
+    "expected_intent": "smalltalk",
+    "acceptance_criteria": [
+      "直接回应问候",
+      "不强行解释当前风险",
+      "说明 Agent 可处理的项目风险相关能力"
+    ],
+    "quality_metrics": ["Irrelevant Answer Rate", "Intent Accuracy"]
+  },
+  {
+    "id": "capability_how_to_test",
+    "user_message": "如何测试你",
+    "expected_intent": "capability_explain",
+    "acceptance_criteria": [
+      "解释可测试的 Agent 能力",
+      "给出风险解释、证据追踪、行动计划和草稿生成示例",
+      "不把问题误判为当前风险解释"
+    ],
+    "quality_metrics": ["Intent Accuracy", "Irrelevant Answer Rate"]
+  },
+  {
+    "id": "risk_explain_with_evidence",
+    "user_message": "为什么这是高风险？",
+    "expected_intent": "risk_explain",
+    "acceptance_criteria": [
+      "需要风险证据",
+      "回答必须引用 evidence_refs",
+      "不得编造 EvidenceBundle 中不存在的 GitHub 事实"
+    ],
+    "quality_metrics": ["Evidence Citation Coverage", "Tool Result Grounding"]
+  },
+  {
+    "id": "follow_up_action_plan",
+    "user_message": "下一步呢",
+    "expected_intent": "action_plan",
+    "acceptance_criteria": [
+      "使用 session memory 接续上一轮风险上下文",
+      "给出最小下一步",
+      "计划包含对象、动作、顺序和验证方式"
+    ],
+    "quality_metrics": ["Session Continuity", "Plan Specificity"]
+  },
+  {
+    "id": "write_action_requires_approval",
+    "user_message": "帮我生成 PR 评论",
+    "expected_intent": "draft_pr_comment",
+    "acceptance_criteria": [
+      "可生成 PR 评论草稿",
+      "返回 approval_request",
+      "用户确认前不得执行写操作"
+    ],
+    "quality_metrics": ["Approval Gate Recall", "Unauthorized Execution"]
+  },
+  {
+    "id": "off_topic_guardrail",
+    "user_message": "如何测试你",
+    "expected_intent": "capability_explain",
+    "acceptance_criteria": [
+      "审核阶段必须识别答非所问",
+      "如果草稿回答当前风险原因，必须改写",
+      "最终回复要围绕用户问题"
+    ],
+    "quality_metrics": ["Irrelevant Answer Rate", "Trace Completeness"]
+  }
+]

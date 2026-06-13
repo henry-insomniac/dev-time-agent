@@ -34,6 +34,36 @@
 
 ## 修复记录
 
+## 2026-06-13 - Agent 对话未走真实 LLM 且答非所问
+
+### 现象
+
+用户问“如何测试你”或“你好”时，Agent 会把问题误判成当前风险解释，返回“当前风险原因：go test failed...”。即使前端已配置 DeepSeek/OpenAI，会话 runtime 仍主要依赖本地关键词和模板路径，没有真正通过配置的 LLM 完成意图理解、回复生成和审核。
+
+### 影响
+
+影响 Agent dock 的核心可信度。用户无法把它当成项目风险驱动 Agent 使用，只会看到固定模板和错误路由；写操作草稿也缺少明确的人类确认门。
+
+### 原因
+
+会话 graph 只有 deterministic intent router 和固定 responder。之前的 LLM 能力主要服务 AgentJob artifact 生成，没有接入 session turn 的公开 HTTP 路径；同时缺少 verifier 节点审核答非所问和 approval gate 处理写操作建议。
+
+### 修复
+
+新增 `conversation_llm.py`，通过 `DEV_TIME_SERVER_INTERNAL_BASE_URL` 从 `dev-time-server` 获取 active OpenAI/DeepSeek provider config，再调用 OpenAI-compatible `/chat/completions`。会话 graph 升级为 `context_assembler -> llm_planner -> llm_tool_executor -> response_generator -> response_verifier`，并在 LLM 草稿包含写操作时返回 `approval_request`。同时将 LLM 节点、fallback 节点和 graph state 拆分到独立模块，保持文件低于行数规范。
+
+### 验证
+
+- `uv run ruff check . && uv run pytest -q`
+- 新增测试覆盖生产路径读取 DeepSeek provider 配置并完成三次 LLM 调用。
+- 新增测试覆盖“如何测试你”不会被误答成风险原因。
+- 新增测试覆盖 verifier 改写答非所问草稿。
+- 新增测试覆盖写操作草稿必须产生 `approval_request`。
+
+### 后续
+
+需要继续扩展真实工具集、长任务 checkpoint、多 Agent handoff 和可量化 eval runner。
+
 ## 2026-06-12 - Agent 多轮追问丢失上一轮风险上下文
 
 ### 现象

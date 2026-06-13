@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 from threading import Thread
 from typing import Any
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from dev_time_agent.app import app
 from dev_time_agent.client import HTTPServerClient
 from dev_time_agent.graph_runtime import (
+    configure_conversation_llm_for_tests,
     configure_session_memory_store_for_tests,
     configure_tool_registry_for_tests,
 )
@@ -17,6 +19,8 @@ from dev_time_agent.tools import build_default_tool_registry
 
 
 def setup_function() -> None:
+    os.environ.pop("DEV_TIME_SERVER_INTERNAL_BASE_URL", None)
+    configure_conversation_llm_for_tests(None)
     configure_session_memory_store_for_tests(InMemorySessionMemoryStore())
     configure_tool_registry_for_tests(None)
 

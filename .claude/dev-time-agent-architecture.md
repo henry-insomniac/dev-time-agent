@@ -55,6 +55,26 @@ MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读�
 
 会话记忆只保存对话连续性所需的短期摘要，例如上一轮意图、风险原因、风险等级和 evidence_refs。它用于处理“下一步呢”“然后呢”这类上下文追问，不替代 `dev-time-server` 的事实源。运行时默认使用进程内 memory；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite store 持久化 session memory，服务重启后仍可继续围绕上一轮风险上下文回答。
 
+当前会话 Agent 已从关键词模板路由升级为 LLM 主导的回路：
+
+```text
+context_assembler
+-> llm_planner
+-> llm_tool_executor  # 按计划读取受控证据
+-> response_generator
+-> response_verifier  # 审核答非所问、证据编造和安全边界
+-> approval_gate      # 写操作只返回待确认请求
+```
+
+生产路径通过 `DEV_TIME_SERVER_INTERNAL_BASE_URL` 调用 `dev-time-server` 的 `GET /internal/llm-provider-config` 获取 active OpenAI/DeepSeek provider，再使用 OpenAI-compatible `/chat/completions` 完成 `plan_turn`、`generate_response` 和 `verify_response` 三段式结构化 JSON 调用。没有配置 LLM 时保留 deterministic fallback，用于本地降级和旧接口兼容。
+
+关键行为边界：
+
+- 普通对话和能力说明必须围绕用户问题回答，不得强行解释当前风险。
+- 风险解释或行动计划必须在需要时调用 `risk_evidence.read`，并返回 evidence_refs。
+- LLM 草稿必须经过 verifier；答非所问时使用 verifier 提供的改写。
+- LLM 生成写操作草稿时只能返回 `approval_request`，用户确认前不得执行外部写入。
+
 ### Eval System
 
 负责 fixture、replay、snapshot 和质量回归，保证 Agent 可迭代。

@@ -100,6 +100,31 @@ class IntentClassification(BaseModel):
     clarifying_question: str = ""
 
 
+class AgentPlan(BaseModel):
+    intent: str
+    confidence: float
+    needs_evidence: bool
+    needs_tools: bool
+    tool_names: list[str] = Field(default_factory=list)
+    answer_strategy: str
+    reasoning_summary: str
+    safety_notes: list[str] = Field(default_factory=list)
+
+
+class AgentDraftResponse(BaseModel):
+    answer: str
+    evidence_refs: list[str] = Field(default_factory=list)
+    suggested_actions: list[dict] = Field(default_factory=list)
+    reasoning_summary: str
+    confidence: float
+
+
+class ResponseVerification(BaseModel):
+    passed: bool
+    issues: list[str] = Field(default_factory=list)
+    rewrite_instruction: str = ""
+
+
 class AgentTraceEvent(BaseModel):
     node: str
     title: str

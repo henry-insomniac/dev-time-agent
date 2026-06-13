@@ -1,8 +1,12 @@
+import os
+
 from fastapi.testclient import TestClient
 
 from dev_time_agent.app import app
 from dev_time_agent.graph_runtime import (
+    configure_conversation_llm_for_tests,
     configure_session_memory_store_for_tests,
+    configure_tool_registry_for_tests,
     reset_session_memory_for_tests,
 )
 from dev_time_agent.memory import InMemorySessionMemoryStore, SQLiteSessionMemoryStore
@@ -10,6 +14,9 @@ from dev_time_agent.schemas import EvidenceBundle
 
 
 def setup_function() -> None:
+    os.environ.pop("DEV_TIME_SERVER_INTERNAL_BASE_URL", None)
+    configure_conversation_llm_for_tests(None)
+    configure_tool_registry_for_tests(None)
     configure_session_memory_store_for_tests(InMemorySessionMemoryStore())
     reset_session_memory_for_tests()
 
@@ -92,6 +99,10 @@ def test_agent_session_turn_reports_project_status_through_graph() -> None:
         "evidence_refs": ["event_check-run-1"],
         "current_node": "status_reporter",
         "trace_events": [
+            {
+                "node": "context_assembler",
+                "title": "组装 Agent 上下文",
+            },
             {
                 "node": "intent_router",
                 "title": "识别为项目状态查询",

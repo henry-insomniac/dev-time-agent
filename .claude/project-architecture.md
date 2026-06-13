@@ -47,8 +47,13 @@
 │       ├── app.py
 │       ├── buildinfo.py
 │       ├── client.py
+│       ├── context.py
 │       ├── conversation.py
+│       ├── conversation_llm.py
+│       ├── fallback_graph_nodes.py
+│       ├── graph_state.py
 │       ├── graph_runtime.py
+│       ├── llm_graph_nodes.py
 │       ├── llm.py
 │       ├── memory.py
 │       ├── runner.py
@@ -62,6 +67,8 @@
 ├── tests/
 │   ├── test_buildinfo.py
 │   ├── test_app.py
+│   ├── test_agent_eval_fixtures.py
+│   ├── test_agent_llm_loop.py
 │   ├── test_conversation_runtime.py
 │   ├── test_evidence_bundle_schema.py
 │   ├── test_llm_worker.py
@@ -111,7 +118,15 @@ Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数
 
 ### `src/dev_time_agent/`
 
-Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation graph、session memory store、LLM adapter、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；对话 runtime 通过 EvidenceBundle 和 session memory 支持围绕风险上下文的多轮追问。
+Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation graph、LLM 主导的 plan/tool/generate/verify 对话回路、session memory store、LLM adapter、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；对话 runtime 通过 EvidenceBundle、只读工具和 session memory 支持围绕风险上下文的多轮追问。
+
+对话 graph 已拆分为：
+
+- `graph_runtime.py`：运行时依赖配置、LangGraph 装配、session memory 持久化。
+- `llm_graph_nodes.py`：LLM planner、工具执行、回复生成、回复审核和审批门。
+- `fallback_graph_nodes.py`：未配置 LLM 时的兼容 fallback。
+- `conversation_llm.py`：OpenAI-compatible 三段式结构化对话 LLM adapter。
+- `graph_state.py`：graph state 和 conversation LLM 协议。
 
 ### `src/dev_time_agent/tools.py`
 
@@ -156,3 +171,4 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-11 | 接入 OpenAI-compatible LLM 调用 | Agent worker 可从 server internal API 获取 active OpenAI/DeepSeek 配置，并用结构化 JSON 输出生成 AgentArtifact | `uv run ruff check . && uv run pytest` |
 | 2026-06-12 | 增加 LangGraph 会话 runtime 与可持久化 session memory | Agent 对话需要支持围绕同一风险上下文的多轮追问，服务重载后仍可继续使用上一轮风险摘要 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 增加 Tool Layer 首个只读工具 | Agent Runtime 可在缺少请求内 EvidenceBundle 时自行调用 `risk_evidence.read` 获取证据，并返回 `tool_calls` 追踪 | `uv run ruff check . && uv run pytest -q` |
+| 2026-06-13 | 会话 Agent 接入 LLM 主导回路和审批门 | 解决关键词路由导致答非所问、未真实调用配置 LLM、写操作缺少确认边界的问题 | `uv run ruff check . && uv run pytest -q` |
