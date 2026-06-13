@@ -53,6 +53,7 @@
 │       ├── memory.py
 │       ├── runner.py
 │       ├── schemas.py
+│       ├── tools.py
 │       ├── worker.py
 │       └── workflows/
 │           ├── __init__.py
@@ -69,6 +70,7 @@
 │   ├── test_risk_scout.py
 │   ├── test_runner.py
 │   ├── test_server_client.py
+│   ├── test_tool_layer.py
 │   └── test_worker.py
 ├── pyproject.toml
 ├── uv.lock
@@ -111,6 +113,10 @@ Agent Runtime 编码规范、workflow 边界、Python / Pydantic 约束、行数
 
 Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation graph、session memory store、LLM adapter、AgentJob / AgentArtifact / EvidenceBundle / ActionSuggestion schema、Server internal HTTP client、AgentJob worker、deterministic Risk Scout workflow 和 PR Doctor workflow。worker 会 claim AgentJob、拉取 EvidenceBundle、按 agent_type 路由 workflow，并将 AgentArtifact / ActionSuggestion 回写 server；对话 runtime 通过 EvidenceBundle 和 session memory 支持围绕风险上下文的多轮追问。
 
+### `src/dev_time_agent/tools.py`
+
+Tool Layer 边界。当前提供 `risk_evidence.read` 只读工具，通过 `dev-time-server` internal API 根据 `risk_assessment_id` 获取 EvidenceBundle，并把工具调用结果记录到 `tool_calls` 和 trace。工具层不得直接写 GitHub，不得绕过 `dev-time-server` 的事实源和权限边界。
+
 ### `src/dev_time_agent/memory.py`
 
 Session memory 存储边界。默认使用进程内 in-memory store；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite JSON store 持久化每个 session 的风险摘要、证据引用和上一轮意图。该模块只保存 Agent 推理所需的短期上下文，不保存 canonical 项目状态；事实源仍归 `dev-time-server`。
@@ -149,3 +155,4 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-11 | 接入 Server internal HTTP client 和 workflow 路由 | Agent worker 可 claim、获取 EvidenceBundle、运行 Risk Scout / PR Doctor 并回写结果 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 接入 OpenAI-compatible LLM 调用 | Agent worker 可从 server internal API 获取 active OpenAI/DeepSeek 配置，并用结构化 JSON 输出生成 AgentArtifact | `uv run ruff check . && uv run pytest` |
 | 2026-06-12 | 增加 LangGraph 会话 runtime 与可持久化 session memory | Agent 对话需要支持围绕同一风险上下文的多轮追问，服务重载后仍可继续使用上一轮风险摘要 | `uv run ruff check . && uv run pytest -q` |
+| 2026-06-13 | 增加 Tool Layer 首个只读工具 | Agent Runtime 可在缺少请求内 EvidenceBundle 时自行调用 `risk_evidence.read` 获取证据，并返回 `tool_calls` 追踪 | `uv run ruff check . && uv run pytest -q` |

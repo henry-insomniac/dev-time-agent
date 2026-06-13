@@ -22,6 +22,7 @@
 - prompt 模板和 Python 控制逻辑分离。
 - LLM adapter 必须处理 timeout、retry、结构化输出校验和错误分类。
 - Memory store 必须隐藏具体存储实现。Graph node 只能通过 store 接口读取/写入 session memory，不直接操作 SQL、文件或全局 dict。
+- Tool layer 必须隐藏外部 API 细节。Graph node 只能通过工具名和结构化输入调用工具，并把工具结果记录到 `tool_calls` 和 trace。
 - 日志只记录对象 ID、状态、模型、耗时和错误摘要。
 
 ## Agent 工作流规范
@@ -31,6 +32,8 @@
 - prompt version 必须随 AgentArtifact 或 AgentRun 记录。
 - 修改 prompt 或 output schema 时，必须更新 replay fixture 或 snapshot。
 - ActionSuggestion 草稿必须包含目标对象、正文、生成原因、证据引用和权限要求。
+- 只读工具必须只返回 EvidenceBundle、evidence refs 或结构化读结果，不产生外部写入副作用。
+- 写入类工具必须先返回 `approval_request`，用户确认前不得执行。
 
 ## 行数规范
 

@@ -47,6 +47,8 @@ MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读�
 
 只提供读工具和草稿生成工具，不直接执行 GitHub 写入。
 
+当前已落地的首个工具是 `risk_evidence.read`。它通过 `dev-time-server` internal API 按 `risk_assessment_id` 获取 EvidenceBundle，用于 Agent Runtime 在请求没有直接携带证据包时自行补齐风险上下文。工具调用必须写入 `tool_calls`，并在 trace 中记录工具执行节点，便于前端和 eval 系统审计。
+
 ### Contextual Conversation
 
 负责在当前风险上下文中回答用户追问。它不是泛用聊天能力，只能围绕当前 EvidenceBundle、AgentArtifact、ActionSuggestion 和 allowed actions 解释风险、验证证据、说明影响或生成行动草稿。
@@ -195,6 +197,7 @@ dev-time
 -> 用户在 Agent dock 提问
 -> dev-time-server 校验项目权限和 EvidenceBundle 新鲜度
 -> dev-time-agent 使用 EvidenceBundle + AgentArtifact + session memory 生成回答
+-> 如请求未携带 EvidenceBundle，dev-time-agent 可通过只读工具从 server internal API 拉取证据
 -> dev-time-agent 返回 ConversationTurn 和 evidence_refs
 -> dev-time-server 保存 turn
 -> dev-time 展示回答并高亮证据
@@ -217,6 +220,7 @@ agent.action.confirmed
 
 - `dev-time-agent` 不直接执行 GitHub 写入。
 - `dev-time-agent` 只能生成 ActionSuggestion 草稿。
+- `dev-time-agent` 工具层只能通过 `dev-time-server` internal API 读取受控事实，不直接读写 GitHub 或业务数据库。
 - 用户确认后，由 `dev-time-server` 校验权限并执行 GitHub 写入。
 - LLM provider key 由 `dev-time-server` 加密存储和审计。
 - Agent 日志不得记录明文 key、private repo 的非必要完整内容或敏感用户数据。

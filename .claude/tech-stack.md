@@ -49,6 +49,7 @@ Go 版 Agent 可作为后续实验，但不作为 MVP 默认方案。
 - EvidenceBundle 必须通过 `dev-time-server` internal API 获取，避免绕过权限和事实源边界。
 - LLM Provider 必须通过 `dev-time-server` 的 internal API 获取，当前只支持 OpenAI 和 DeepSeek 的 OpenAI-compatible `/chat/completions` 调用。
 - Session memory 只保存 Agent 对话连续性需要的短期摘要，不维护 canonical state；事实源仍必须来自 `dev-time-server`。
+- Tool Layer 当前通过 `dev-time-server` internal API 提供只读事实工具；工具调用必须记录 `tool_calls` 和 trace，写入类工具必须先走 approval。
 - 所有 Agent 输出必须是结构化对象，并包含 `evidence_refs`。
 - 证据不足时返回 `insufficient_evidence`，不得编造 GitHub object、风险原因或行动建议。
 - Agent 只生成 ActionSuggestion 草稿，不直接执行 GitHub 写入。
@@ -70,6 +71,7 @@ src/dev_time_agent/
 ├── memory.py
 ├── runner.py
 ├── schemas.py
+├── tools.py
 ├── worker.py
 └── workflows/
     ├── pr_doctor.py

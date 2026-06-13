@@ -8,8 +8,10 @@ from dev_time_agent.memory import (
     build_session_memory_store_from_env,
 )
 from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle
+from dev_time_agent.tools import ToolRegistry, build_tool_registry_from_env
 
 _SESSION_MEMORY_STORE: SessionMemoryStore = build_session_memory_store_from_env()
+_TOOL_REGISTRY: ToolRegistry | None = build_tool_registry_from_env()
 
 
 class AgentState(TypedDict, total=False):
@@ -38,6 +40,11 @@ def reset_session_memory_for_tests() -> None:
 def configure_session_memory_store_for_tests(store: SessionMemoryStore) -> None:
     global _SESSION_MEMORY_STORE
     _SESSION_MEMORY_STORE = store
+
+
+def configure_tool_registry_for_tests(registry: ToolRegistry | None) -> None:
+    global _TOOL_REGISTRY
+    _TOOL_REGISTRY = registry
 
 
 def run_agent_session_turn(
@@ -172,6 +179,24 @@ def context_loader(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
     memory = state.get("memory", {})
     evidence_refs = evidence_refs_from_bundle(bundle) if bundle is not None else []
+    tool_calls = list(state.get("tool_calls", []))
+    tool_trace_events: list[dict[str, str]] = []
+    if bundle is None and _TOOL_REGISTRY is not None:
+        tool_input = {"risk_assessment_id": state["risk_assessment_id"]}
+        tool_result = _TOOL_REGISTRY.run("risk_evidence.read", tool_input)
+        bundle = tool_result.evidence_bundle
+        evidence_refs = tool_result.evidence_refs
+        tool_calls.append(
+            {
+                "name": "risk_evidence.read",
+                "status": "succeeded",
+                "input": tool_input,
+                "evidence_refs": evidence_refs,
+            }
+        )
+        tool_trace_events.append(
+            {"node": "tool_executor", "title": "调用风险证据工具"}
+        )
     memory_used = False
     if not evidence_refs and memory.get("last_evidence_refs"):
         evidence_refs = list(memory["last_evidence_refs"])
@@ -179,12 +204,15 @@ def context_loader(state: AgentState) -> AgentState:
     trace_events = [
         *state.get("trace_events", []),
         {"node": "context_loader", "title": "加载风险证据"},
+        *tool_trace_events,
     ]
     if memory_used:
         trace_events.append({"node": "memory_retriever", "title": "读取会话记忆"})
     return {
         **state,
+        "evidence_bundle": bundle,
         "evidence_refs": evidence_refs,
+        "tool_calls": tool_calls,
         "current_node": "context_loader",
         "trace_events": trace_events,
     }
