@@ -297,7 +297,7 @@ def test_agent_session_turn_lists_github_repositories_through_fallback_tools() -
                 "conversation_id": "conversation_project_repo_1001",
                 "project_id": "project_repo_1001",
                 "risk_assessment_id": "risk_project_repo_1001",
-                "message": "查看我的 github 项目",
+                "message": "查看我的 github 所有项目",
             },
         )
 
