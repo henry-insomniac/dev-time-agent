@@ -86,6 +86,7 @@
     ├── product-prd.md
     ├── technical-architecture.md
     ├── dev-time-agent-architecture.md
+    ├── github-capability-layer.md
     ├── project-architecture.md
     ├── skill-authoring.md
     ├── bug-fix-log.md
@@ -135,7 +136,17 @@ Agent Runtime Python 包。当前包含 FastAPI runtime、LangGraph conversation
 
 ### `src/dev_time_agent/tools.py`
 
-Tool Layer 边界。当前提供 `risk_evidence.read`、`project_status.read`、`ci_checks.read`、`pull_request.read` 和 `action_suggestion.create`。读工具通过 `dev-time-server` internal API 根据 `risk_assessment_id` 获取事实；`action_suggestion.create` 只创建待确认草稿，不执行 GitHub 写入。所有工具调用结果必须记录到 `tool_calls` 和 trace。工具层不得绕过 `dev-time-server` 的事实源和权限边界。
+Tool Layer 边界。当前提供 `risk_evidence.read`、`project_status.read`、`ci_checks.read`、`pull_request.read`、`github.auth.status`、`github.repos.list`、`github.pull_requests.list`、`github.issues.list`、`github.checks.list` 和 `action_suggestion.create`。读工具通过 `dev-time-server` internal API 根据 `risk_assessment_id`、GitHub 授权状态或 repository_id 获取事实；`action_suggestion.create` 只创建待确认草稿，不执行 GitHub 写入。所有工具调用结果必须记录到 `tool_calls` 和 trace。工具层不得绕过 `dev-time-server` 的事实源和权限边界，不得接触 GitHub token。
+
+GitHub 工具约束：
+
+- `github.auth.status`：确认 server 当前是否拥有 GitHub 授权/导入仓库上下文。
+- `github.repos.list`：列出 server 允许 agent 读取的 GitHub 仓库和 project 映射。
+- `github.pull_requests.list`：按 repository_id 列出 server 已同步的 PR。
+- `github.issues.list`：按 repository_id 列出 server 已同步的 Issue。
+- `github.checks.list`：按 repository_id 列出 server 已同步的 CI/Checks。
+- 用户询问 GitHub 项目、仓库、PR、Issue 或 CI 可见性时，LLM planner 误判为普通对话也必须被编排层纠正为 GitHub 工具调用。
+- Python agent 只能看到工具结果，不能读取、保存或打印 GitHub token。
 
 ### `src/dev_time_agent/memory.py`
 
@@ -178,3 +189,5 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-13 | 增加 Tool Layer 首个只读工具 | Agent Runtime 可在缺少请求内 EvidenceBundle 时自行调用 `risk_evidence.read` 获取证据，并返回 `tool_calls` 追踪 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 会话 Agent 接入 LLM 主导回路和审批门 | 解决关键词路由导致答非所问、未真实调用配置 LLM、写操作缺少确认边界的问题 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 增加可展示 reasoning_trace | 前端需要默认折叠、手动展开的可审计思考过程，而不是暴露原始模型推理 | `uv run ruff check . && uv run pytest -q` |
+| 2026-06-13 | 增加 GitHub 只读工具入口 | Agent 需要在用户询问 GitHub 项目可见性时先检查授权并读取仓库列表，而不是凭空说明能力 | `uv run pytest tests/test_agent_llm_loop.py -q` |
+| 2026-06-15 | 扩展 GitHub 对象级只读能力 | Agent 需要能查询授权仓库的 repo、PR、Issue、Checks，而不是把 GitHub 查询误判为风险澄清 | `uv run pytest tests/test_tool_layer.py -q` |

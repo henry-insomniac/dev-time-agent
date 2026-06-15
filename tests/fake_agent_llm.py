@@ -34,9 +34,7 @@ class FakeConversationLLM:
     ) -> AgentDraftResponse:
         if plan.needs_evidence:
             assert context["evidence_summary"]["available"] is True
-            assert "event_check-run-123" in context["evidence_summary"][
-                "evidence_refs"
-            ]
+            assert "event_check-run-123" in context["evidence_summary"]["evidence_refs"]
         return self.draft
 
     def verify_response(
@@ -50,9 +48,106 @@ class FakeConversationLLM:
 
 
 @contextmanager
-def fake_dev_time_server() -> Iterator[str]:
+def fake_dev_time_server(github_connected: bool = False) -> Iterator[str]:
+    github_repositories = [
+        {
+            "id": "repo_1001",
+            "github_id": 1001,
+            "owner": "henry-insomniac",
+            "name": "dev-time-server",
+            "full_name": "henry-insomniac/dev-time-server",
+            "project_id": "project_repo_1001",
+        },
+        {
+            "id": "repo_1002",
+            "github_id": 1002,
+            "owner": "henry-insomniac",
+            "name": "dev-time-agent",
+            "full_name": "henry-insomniac/dev-time-agent",
+            "project_id": "project_repo_1002",
+        },
+    ]
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            if self.path == "/internal/github/auth-status":
+                self.send_json(
+                    {
+                        "connected": github_connected,
+                        "provider": "github_app",
+                        "repositories": github_repositories if github_connected else [],
+                        "permissions": (
+                            ["metadata:read", "pull_requests:read", "checks:read"]
+                            if github_connected
+                            else []
+                        ),
+                    }
+                )
+                return
+
+            if self.path == "/internal/github/repositories":
+                self.send_json(
+                    {"repositories": (github_repositories if github_connected else [])}
+                )
+                return
+
+            if self.path == "/internal/github/repositories/repo_1002/pull-requests":
+                self.send_json(
+                    {
+                        "pull_requests": [
+                            {
+                                "evidence_ref": "event_pull-request-18",
+                                "number": 18,
+                                "title": "Add GitHub tool layer",
+                                "state": "open",
+                                "url": (
+                                    "https://github.test/"
+                                    "henry-insomniac/dev-time-agent/pull/18"
+                                ),
+                            }
+                        ]
+                    }
+                )
+                return
+
+            if self.path == "/internal/github/repositories/repo_1002/issues":
+                self.send_json(
+                    {
+                        "issues": [
+                            {
+                                "evidence_ref": "event_issue-42",
+                                "number": 42,
+                                "title": "Add issue reader",
+                                "state": "open",
+                                "url": (
+                                    "https://github.test/"
+                                    "henry-insomniac/dev-time-agent/issues/42"
+                                ),
+                            }
+                        ]
+                    }
+                )
+                return
+
+            if self.path == "/internal/github/repositories/repo_1002/checks":
+                self.send_json(
+                    {
+                        "checks": [
+                            {
+                                "evidence_ref": "event_check-run-421",
+                                "name": "test",
+                                "status": "completed",
+                                "conclusion": "failure",
+                                "url": (
+                                    "https://github.test/"
+                                    "henry-insomniac/dev-time-agent/actions/runs/421"
+                                ),
+                            }
+                        ]
+                    }
+                )
+                return
+
             if self.path == "/internal/risk-assessments/risk_123/evidence-bundle":
                 self.send_json(
                     {

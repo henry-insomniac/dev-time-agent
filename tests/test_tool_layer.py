@@ -63,7 +63,11 @@ def test_agent_session_turn_reads_evidence_through_tool_when_bundle_is_absent() 
 
 
 def test_agent_session_turn_reads_project_ci_and_pr_tools_for_status() -> None:
-    from dev_time_agent.schemas import AgentDraftResponse, AgentPlan, ResponseVerification
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
     from fake_agent_llm import FakeConversationLLM
 
     with fake_dev_time_server() as base_url:
@@ -127,7 +131,11 @@ def test_agent_session_turn_reads_project_ci_and_pr_tools_for_status() -> None:
         "event_check-run-123",
         "event_pull-request-18",
     ]
-    assert [step["tool_call"]["name"] for step in body["reasoning_trace"] if step["stage"] == "tool_call"] == [
+    assert [
+        step["tool_call"]["name"]
+        for step in body["reasoning_trace"]
+        if step["stage"] == "tool_call"
+    ] == [
         "project_status.read",
         "ci_checks.read",
         "pull_request.read",
@@ -135,7 +143,11 @@ def test_agent_session_turn_reads_project_ci_and_pr_tools_for_status() -> None:
 
 
 def test_agent_session_turn_creates_pending_action_suggestion_draft() -> None:
-    from dev_time_agent.schemas import AgentDraftResponse, AgentPlan, ResponseVerification
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
     from fake_agent_llm import FakeConversationLLM
 
     with fake_dev_time_server() as base_url:
@@ -206,7 +218,11 @@ def test_agent_session_turn_creates_pending_action_suggestion_draft() -> None:
 
 
 def test_agent_session_turn_normalizes_incomplete_action_draft() -> None:
-    from dev_time_agent.schemas import AgentDraftResponse, AgentPlan, ResponseVerification
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
     from fake_agent_llm import FakeConversationLLM
 
     with fake_dev_time_server() as base_url:
@@ -264,6 +280,136 @@ def test_agent_session_turn_normalizes_incomplete_action_draft() -> None:
     assert action["action_type"] == "pr_comment"
     assert action["required_permission"] == "pull_request:write"
     assert action["action_suggestion_id"] == "action_tool_123"
+
+
+def test_agent_session_turn_lists_github_repositories_through_fallback_tools() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "查看我的 github 项目",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_repository_list"
+    assert body["current_node"] == "github_repository_reporter"
+    assert "henry-insomniac/dev-time-server" in body["agent_response"]
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.auth.status",
+        "github.repos.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
+
+
+def test_agent_session_turn_lists_repository_pull_requests_through_fallback_tools() -> (
+    None
+):
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "查看 dev-time-agent 的 PR",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_pull_requests_list"
+    assert body["current_node"] == "github_pull_request_reporter"
+    assert "PR #18" in body["agent_response"]
+    assert "Add GitHub tool layer" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.repos.list",
+        "github.pull_requests.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
+
+
+def test_agent_session_turn_lists_repository_issues_through_fallback_tools() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "查看 dev-time-agent 的 issue",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_issues_list"
+    assert body["current_node"] == "github_issue_reporter"
+    assert "Issue #42" in body["agent_response"]
+    assert "Add issue reader" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.repos.list",
+        "github.issues.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
+
+
+def test_agent_session_turn_lists_repository_checks_through_fallback_tools() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "查看 dev-time-agent 的 CI",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_checks_list"
+    assert body["current_node"] == "github_check_reporter"
+    assert "test" in body["agent_response"]
+    assert "failure" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.repos.list",
+        "github.checks.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
 
 
 @contextmanager

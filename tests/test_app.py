@@ -255,6 +255,78 @@ def test_agent_session_turn_uses_session_memory_for_follow_up_plan() -> None:
     } in follow_up_response.json()["trace_events"]
 
 
+def test_agent_session_turn_refines_previous_response_from_turn_memory() -> None:
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "给我下一步行动计划",
+            "evidence_bundle": evidence_bundle().model_dump(),
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    refine_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "把刚才的建议改短",
+        },
+    )
+
+    assert refine_response.status_code == 200
+    assert refine_response.json()["intent"] == "refine_previous_response"
+    assert refine_response.json()["current_node"] == "memory_responder"
+    assert "简短版" in refine_response.json()["agent_response"]
+    assert "行动计划" in refine_response.json()["agent_response"]
+    assert refine_response.json()["evidence_refs"] == ["event_check-run-1"]
+    assert {
+        "node": "memory_retriever",
+        "title": "读取会话记忆",
+    } in refine_response.json()["trace_events"]
+
+
+def test_agent_session_turn_does_not_use_stale_risk_memory_for_new_assessment() -> None:
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "为什么这是高风险？",
+            "evidence_bundle": evidence_bundle().model_dump(),
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    follow_up_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_2002",
+            "message": "下一步呢",
+        },
+    )
+
+    assert follow_up_response.status_code == 200
+    assert follow_up_response.json()["intent"] == "clarify"
+    assert "test failed and is blocking progress." not in follow_up_response.json()[
+        "agent_response"
+    ]
+    assert follow_up_response.json()["evidence_refs"] == []
+
+
 def test_agent_session_memory_survives_runtime_store_reload(tmp_path) -> None:
     memory_path = tmp_path / "session-memory.sqlite3"
     configure_session_memory_store_for_tests(SQLiteSessionMemoryStore(memory_path))
@@ -291,6 +363,43 @@ def test_agent_session_memory_survives_runtime_store_reload(tmp_path) -> None:
         "agent_response"
     ]
     assert follow_up_response.json()["evidence_refs"] == ["event_check-run-1"]
+
+
+def test_structured_turn_memory_survives_runtime_store_reload(tmp_path) -> None:
+    memory_path = tmp_path / "session-memory.sqlite3"
+    configure_session_memory_store_for_tests(SQLiteSessionMemoryStore(memory_path))
+    client = TestClient(app)
+
+    first_response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "给我下一步行动计划",
+            "evidence_bundle": evidence_bundle().model_dump(),
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    configure_session_memory_store_for_tests(SQLiteSessionMemoryStore(memory_path))
+    restarted_client = TestClient(app)
+    refine_response = restarted_client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "把刚才的建议改短",
+        },
+    )
+
+    assert refine_response.status_code == 200
+    assert refine_response.json()["intent"] == "refine_previous_response"
+    assert "简短版" in refine_response.json()["agent_response"]
+    assert "行动计划" in refine_response.json()["agent_response"]
+    assert refine_response.json()["evidence_refs"] == ["event_check-run-1"]
 
 
 def evidence_bundle() -> EvidenceBundle:

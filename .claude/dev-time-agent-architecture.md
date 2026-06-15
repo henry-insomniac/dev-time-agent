@@ -61,7 +61,7 @@ MVP 当前通过 `dev-time-server` 的 `GET /internal/llm-provider-config` 读�
 
 负责在当前风险上下文中回答用户追问。它不是泛用聊天能力，只能围绕当前 EvidenceBundle、AgentArtifact、ActionSuggestion 和 allowed actions 解释风险、验证证据、说明影响或生成行动草稿。
 
-会话记忆只保存对话连续性所需的短期摘要，例如上一轮意图、风险原因、风险等级和 evidence_refs。它用于处理“下一步呢”“然后呢”这类上下文追问，不替代 `dev-time-server` 的事实源。运行时默认使用进程内 memory；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite store 持久化 session memory，服务重启后仍可继续围绕上一轮风险上下文回答。
+会话记忆只保存对话连续性所需的短期摘要，不替代 `dev-time-server` 的事实源。当前 memory 分为 conversation memory 和 fact snapshot memory：conversation memory 通过 `recent_turns` 保存最近几轮用户问题、Agent 回复摘要和 evidence_refs，用于处理“下一步呢”“把刚才的建议改短”这类追问；fact snapshot memory 保存上一轮带证据的风险摘要，但必须绑定 `project_id`、`risk_assessment_id` 和 evidence_refs，只有当前上下文匹配时才能作为风险上下文使用。运行时默认使用进程内 memory；设置 `DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH` 后使用 SQLite store 持久化 session memory，服务重启后仍可继续围绕上一轮风险上下文回答。
 
 当前会话 Agent 已从关键词模板路由升级为 LLM 主导的回路：
 

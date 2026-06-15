@@ -7,6 +7,9 @@
 - `product-prd.md`：Dev Time 产品需求、MVP 边界、风险模型、Agent 场景和视觉方向。
 - `technical-architecture.md`：跨前后端技术架构、数据流、风险引擎、Agent Runtime、LLM Gateway 和 SVG 架构图。
 - `dev-time-agent-architecture.md`：`dev-time-agent` Agent Runtime 服务的定位、边界、工作流、数据契约和安全约束。
+- `intent-recognition-architecture.md`：意图识别层的当前架构、缺陷、Intent Schema / Multi-step Plan / Intent Eval 规划和面试描述口径。
+- `memory-layer-architecture.md`：记忆层的 session memory、recent turn summary、fact snapshot、freshness 边界和后续规划。
+- `github-capability-layer.md`：GitHub repo、PR、Issue、Checks 只读能力层、工具边界、server internal API 和后续规划。
 - `agent-quality-metrics.md`：Agent 服务质量指标、度量公式、合格线、采集来源和发布门禁。
 - `project-architecture.md`：项目定位、目录职责、架构约束和扩展原则。
 - `skill-authoring.md`：项目级 skills 的编写、安装和维护规范。
@@ -19,6 +22,9 @@
 
 - `product-prd.md`、`technical-architecture.md` 和 `dev-time-agent-architecture.md` 是产品级基础文档；涉及产品定位、MVP、风险模型、Agent 场景、Agent 服务边界、跨端架构时，必须同步更新 `dev-time`、`dev-time-server` 与 `dev-time-agent` 三个仓库中的对应文档。
 - 调整 Agent 能力、风险回答、工具调用、记忆、长任务、人类确认或 eval 体系时，同步检查 `agent-quality-metrics.md` 是否需要更新。
+- 调整意图识别、planner 输出、工具选择、多轮追问、多意图计划或 intent eval 时，同步更新 `intent-recognition-architecture.md`。
+- 调整 session memory、recent turn summary、fact snapshot、preference memory、conversation search 或 memory eval 时，同步更新 `memory-layer-architecture.md`。
+- 调整 GitHub repo、PR、Issue、Checks 或后续 GitHub 对象级工具时，同步更新 `github-capability-layer.md`。
 - 修改项目结构时，同步更新 `project-architecture.md`。
 - 新增、删除或重命名项目级 skill 时，同步更新 `skill-authoring.md`。
 - 修复 bug 后，同步更新 `bug-fix-log.md`。

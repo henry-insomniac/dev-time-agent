@@ -51,6 +51,30 @@ class HTTPServerClient:
             f"/internal/risk-assessments/{risk_assessment_id}/pull-requests",
         )
 
+    def get_github_auth_status(self) -> dict[str, Any]:
+        return self._request_json("GET", "/internal/github/auth-status")
+
+    def list_github_repositories(self) -> dict[str, Any]:
+        return self._request_json("GET", "/internal/github/repositories")
+
+    def list_github_pull_requests(self, repository_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/github/repositories/{repository_id}/pull-requests",
+        )
+
+    def list_github_issues(self, repository_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/github/repositories/{repository_id}/issues",
+        )
+
+    def list_github_checks(self, repository_id: str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/github/repositories/{repository_id}/checks",
+        )
+
     def create_action_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", "/internal/action-suggestions", payload)
 

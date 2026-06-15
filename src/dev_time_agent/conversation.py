@@ -96,6 +96,34 @@ def classify_intent(message: str) -> IntentClassification:
             confidence=0.9,
             requires_evidence=True,
         )
+    if is_github_repository_access_question(normalized):
+        return IntentClassification(
+            intent="github_repository_list",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
+        )
+    if is_github_pull_request_list_question(normalized):
+        return IntentClassification(
+            intent="github_pull_requests_list",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
+        )
+    if is_github_issue_list_question(normalized):
+        return IntentClassification(
+            intent="github_issues_list",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
+        )
+    if is_github_check_list_question(normalized):
+        return IntentClassification(
+            intent="github_checks_list",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
+        )
     if any(
         keyword in normalized
         for keyword in {
@@ -146,3 +174,66 @@ def evidence_refs_from_bundle(bundle: EvidenceBundle) -> list[str]:
             seen.add(evidence_ref)
             refs.append(evidence_ref)
     return refs
+
+
+def is_github_repository_access_question(normalized_message: str) -> bool:
+    mentions_github = "github" in normalized_message or "git hub" in normalized_message
+    mentions_repository = any(
+        keyword in normalized_message
+        for keyword in {"项目", "仓库", "repo", "repository", "代码库"}
+    )
+    asks_visibility = any(
+        keyword in normalized_message
+        for keyword in {
+            "查看",
+            "看到",
+            "访问",
+            "有哪些",
+            "什么",
+            "列表",
+            "能看",
+            "可见",
+        }
+    )
+    return mentions_github and mentions_repository and asks_visibility
+
+
+def is_github_pull_request_list_question(normalized_message: str) -> bool:
+    mentions_pull_request = (
+        "pr" in normalized_message or "pull request" in normalized_message
+    )
+    asks_visibility = any(
+        keyword in normalized_message
+        for keyword in {"查看", "看到", "有哪些", "列表", "列出", "打开", "open"}
+    )
+    mentions_risk = any(
+        keyword in normalized_message for keyword in {"风险", "为什么", "阻塞"}
+    )
+    return mentions_pull_request and asks_visibility and not mentions_risk
+
+
+def is_github_issue_list_question(normalized_message: str) -> bool:
+    mentions_issue = "issue" in normalized_message or "issues" in normalized_message
+    asks_visibility = any(
+        keyword in normalized_message
+        for keyword in {"查看", "看到", "有哪些", "列表", "列出", "打开", "open"}
+    )
+    mentions_risk = any(
+        keyword in normalized_message for keyword in {"风险", "为什么", "阻塞"}
+    )
+    return mentions_issue and asks_visibility and not mentions_risk
+
+
+def is_github_check_list_question(normalized_message: str) -> bool:
+    mentions_check = any(
+        keyword in normalized_message
+        for keyword in {"ci", "check", "checks", "检查", "测试"}
+    )
+    asks_visibility = any(
+        keyword in normalized_message
+        for keyword in {"查看", "看到", "有哪些", "列表", "列出", "打开", "open"}
+    )
+    mentions_risk = any(
+        keyword in normalized_message for keyword in {"风险", "为什么", "阻塞"}
+    )
+    return mentions_check and asks_visibility and not mentions_risk

@@ -87,6 +87,8 @@ Dev Time 的 Agent 不是泛用聊天助手，而是项目风险驱动的工作�
 | Cross-session Pollution | A 会话信息污染 B 会话比例 | 污染会话数 / 总会话数 | 0 | 0 | 权限和隐私底线 | isolation test |
 | Restart Recovery | Runtime 重启后记忆可恢复 | 恢复成功数 / 重启样本数 | >= 95% | >= 99% | 长任务和生产服务必需 | integration test |
 | TTL Compliance | 过期记忆按策略失效 | 正确失效数 / 过期样本数 | >= 95% | >= 99% | 防止旧风险误导新判断 | memory store audit |
+| Turn Summary Recovery | 可从 recent_turns 恢复上一轮回复摘要 | 正确恢复 turn summary 数 / 需要恢复样本数 | >= 90% | >= 97% | 支持“把刚才建议改短”等自然追问 | memory eval |
+| Stale Fact Rejection | risk_assessment 变化后拒绝使用旧风险事实 | 正确拒绝旧事实数 / stale memory 样本数 | >= 95% | >= 99% | 防止旧风险原因污染新判断 | integration test |
 
 ## 5. 工具调用指标
 

@@ -209,6 +209,198 @@ def test_agent_session_turn_executes_planned_read_tool_before_generating_respons
     ]
 
 
+def test_agent_session_turn_checks_github_authorization_before_answering_repo_access() -> None:
+    with fake_dev_time_server() as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(
+            FakeConversationLLM(
+                expected_user_message="你能看到我的 GitHub 项目吗",
+                plan=AgentPlan(
+                    intent="github_access_status",
+                    confidence=0.95,
+                    needs_evidence=False,
+                    needs_tools=True,
+                    tool_names=["github.auth.status"],
+                    answer_strategy="check_github_auth_before_explaining_access",
+                    reasoning_summary="用户询问 GitHub 可见范围，需要先检查授权状态。",
+                    safety_notes=["github_access_requires_authorization"],
+                ),
+                draft=AgentDraftResponse(
+                    answer=(
+                        "当前还没有 GitHub 授权，所以我不能查看你的 GitHub 仓库。"
+                        "连接 GitHub 后，我可以读取授权范围内的仓库、PR、CI 检查和 issue。"
+                    ),
+                    evidence_refs=[],
+                    suggested_actions=[],
+                    reasoning_summary="基于 GitHub 授权状态回答能力边界。",
+                    confidence=0.93,
+                ),
+                verification=ResponseVerification(
+                    passed=True,
+                    issues=[],
+                    rewrite_instruction="",
+                ),
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "你能看到我的 GitHub 项目吗",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_access_status"
+    assert "当前还没有 GitHub 授权" in body["agent_response"]
+    assert body["tool_calls"] == [
+        {
+            "name": "github.auth.status",
+            "status": "succeeded",
+            "input": {},
+            "evidence_refs": [],
+        }
+    ]
+    assert {"node": "tool_executor", "title": "检查 GitHub 授权"} in body[
+        "trace_events"
+    ]
+
+
+def test_agent_session_turn_lists_authorized_github_repositories() -> None:
+    with fake_dev_time_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(
+            FakeConversationLLM(
+                expected_user_message="你能看到我的 GitHub 项目吗",
+                plan=AgentPlan(
+                    intent="github_repository_list",
+                    confidence=0.96,
+                    needs_evidence=False,
+                    needs_tools=True,
+                    tool_names=["github.auth.status", "github.repos.list"],
+                    answer_strategy="list_authorized_github_repositories",
+                    reasoning_summary="用户询问 GitHub 项目，需要读取授权仓库列表。",
+                    safety_notes=[],
+                ),
+                draft=AgentDraftResponse(
+                    answer=(
+                        "可以。我当前能看到你授权给 Dev Time 的仓库："
+                        "henry-insomniac/dev-time-server、henry-insomniac/dev-time-agent。"
+                    ),
+                    evidence_refs=[],
+                    suggested_actions=[],
+                    reasoning_summary="基于 GitHub 仓库工具结果回答。",
+                    confidence=0.94,
+                ),
+                verification=ResponseVerification(
+                    passed=True,
+                    issues=[],
+                    rewrite_instruction="",
+                ),
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "你能看到我的 GitHub 项目吗",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_repository_list"
+    assert "henry-insomniac/dev-time-server" in body["agent_response"]
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.auth.status",
+        "github.repos.list",
+    ]
+    assert {"node": "tool_executor", "title": "列出 GitHub 仓库"} in body[
+        "trace_events"
+    ]
+
+
+def test_agent_session_turn_corrects_llm_plan_when_github_access_needs_tools() -> None:
+    class MisclassifyingGitHubAccessLLM:
+        def plan_turn(self, context: dict) -> AgentPlan:
+            return AgentPlan(
+                intent="ordinary_chat",
+                confidence=0.91,
+                needs_evidence=False,
+                needs_tools=False,
+                tool_names=[],
+                answer_strategy="answer_from_general_knowledge",
+                reasoning_summary="误判为普通能力说明。",
+                safety_notes=[],
+            )
+
+        def generate_response(
+            self,
+            context: dict,
+            plan: AgentPlan,
+        ) -> AgentDraftResponse:
+            assert plan.intent == "github_repository_list"
+            assert "github.auth.status" in context["tool_results"]
+            assert "github.repos.list" in context["tool_results"]
+            return AgentDraftResponse(
+                answer=(
+                    "可以。我当前能看到你授权给 Dev Time 的仓库："
+                    "henry-insomniac/dev-time-server、henry-insomniac/dev-time-agent。"
+                ),
+                evidence_refs=[],
+                suggested_actions=[],
+                reasoning_summary="基于 GitHub 工具结果回答。",
+                confidence=0.94,
+            )
+
+        def verify_response(
+            self,
+            context: dict,
+            plan: AgentPlan,
+            draft: AgentDraftResponse,
+        ) -> ResponseVerification:
+            return ResponseVerification(passed=True, issues=[], rewrite_instruction="")
+
+    with fake_dev_time_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(MisclassifyingGitHubAccessLLM())
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "你能看到我的 GitHub 项目吗",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_repository_list"
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.auth.status",
+        "github.repos.list",
+    ]
+
+
 def test_agent_session_turn_returns_collapsible_reasoning_trace() -> None:
     with fake_dev_time_server() as base_url:
         configure_tool_registry_for_tests(

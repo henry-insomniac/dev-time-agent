@@ -5,7 +5,12 @@ from dev_time_agent.fallback_graph_nodes import (
     clarify_responder,
     configure_fallback_graph_node_dependencies,
     context_loader,
+    github_check_reporter,
+    github_issue_reporter,
+    github_pull_request_reporter,
+    github_repository_reporter,
     intent_router,
+    memory_responder,
     planner,
     risk_analyst,
     route_after_context,
@@ -70,7 +75,9 @@ configure_llm_graph_node_dependencies(
     conversation_llm_provider=conversation_llm_for_turn,
     tool_registry_provider=tool_registry_for_turn,
 )
-configure_fallback_graph_node_dependencies(tool_registry_provider=tool_registry_for_turn)
+configure_fallback_graph_node_dependencies(
+    tool_registry_provider=tool_registry_for_turn
+)
 
 
 def run_agent_session_turn(
@@ -128,6 +135,11 @@ def build_agent_graph():
     graph.add_node("smalltalk_responder", smalltalk_responder)
     graph.add_node("self_intro_responder", self_intro_responder)
     graph.add_node("clarify_responder", clarify_responder)
+    graph.add_node("github_check_reporter", github_check_reporter)
+    graph.add_node("github_issue_reporter", github_issue_reporter)
+    graph.add_node("github_pull_request_reporter", github_pull_request_reporter)
+    graph.add_node("github_repository_reporter", github_repository_reporter)
+    graph.add_node("memory_responder", memory_responder)
     graph.add_node("status_reporter", status_reporter)
     graph.add_node("risk_analyst", risk_analyst)
     graph.add_node("planner", planner)
@@ -159,6 +171,11 @@ def build_agent_graph():
             "context_loader": "context_loader",
             "smalltalk_responder": "smalltalk_responder",
             "self_intro_responder": "self_intro_responder",
+            "memory_responder": "memory_responder",
+            "github_check_reporter": "github_check_reporter",
+            "github_issue_reporter": "github_issue_reporter",
+            "github_pull_request_reporter": "github_pull_request_reporter",
+            "github_repository_reporter": "github_repository_reporter",
             "clarify_responder": "clarify_responder",
             "status_reporter": "status_reporter",
         },
@@ -167,6 +184,7 @@ def build_agent_graph():
         "context_loader",
         route_after_context,
         {
+            "clarify_responder": "clarify_responder",
             "status_reporter": "status_reporter",
             "risk_analyst": "risk_analyst",
             "planner": "planner",
@@ -175,6 +193,11 @@ def build_agent_graph():
     graph.add_edge("smalltalk_responder", END)
     graph.add_edge("self_intro_responder", END)
     graph.add_edge("clarify_responder", END)
+    graph.add_edge("github_check_reporter", END)
+    graph.add_edge("github_issue_reporter", END)
+    graph.add_edge("github_pull_request_reporter", END)
+    graph.add_edge("github_repository_reporter", END)
+    graph.add_edge("memory_responder", END)
     graph.add_edge("status_reporter", END)
     graph.add_edge("risk_analyst", END)
     graph.add_edge("planner", END)
@@ -187,15 +210,42 @@ def persist_session_memory(state: AgentState) -> None:
     bundle = state.get("evidence_bundle")
     evidence_refs = state.get("evidence_refs", [])
 
+    memory["session_project_id"] = state.get("project_id")
     memory["last_intent"] = state.get("intent")
     if evidence_refs:
         memory["last_evidence_refs"] = list(evidence_refs)
     if bundle is not None:
+        memory["fact_project_id"] = state.get("project_id")
+        memory["fact_risk_assessment_id"] = state.get("risk_assessment_id")
         memory["last_project_name"] = bundle.project.name
         memory["last_risk_score"] = bundle.assessment.score
         memory["last_risk_level"] = bundle.assessment.level
         if bundle.signals:
             memory["last_risk_reason"] = bundle.signals[0].reason
 
+    append_recent_turn(memory, state, evidence_refs)
+
     if memory.get("last_risk_reason") or memory.get("last_evidence_refs"):
         _SESSION_MEMORY_STORE.put(session_id, memory)
+
+
+def append_recent_turn(
+    memory: dict,
+    state: AgentState,
+    evidence_refs: list[str],
+) -> None:
+    response = str(state.get("response", "")).strip()
+    if not response:
+        return
+    recent_turns = list(memory.get("recent_turns", []))
+    recent_turns.append(
+        {
+            "intent": state.get("intent", ""),
+            "user_summary": state.get("user_message", ""),
+            "agent_summary": response,
+            "evidence_refs": list(evidence_refs),
+            "project_id": state.get("project_id", ""),
+            "risk_assessment_id": state.get("risk_assessment_id", ""),
+        }
+    )
+    memory["recent_turns"] = recent_turns[-5:]

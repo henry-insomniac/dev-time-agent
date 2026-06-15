@@ -102,6 +102,8 @@ class OpenAICompatibleConversationLLM:
                                 "你是 Dev Time 的项目风险 Agent 编排器。"
                                 "必须围绕用户问题、Agent 定位、可用证据和可用工具回答。"
                                 "普通对话不要强行解释当前风险；风险结论必须引用证据；"
+                                "GitHub 项目、仓库、PR、CI 可见性必须先规划 GitHub 工具调用；"
+                                "不要把 project_id 当作用户可见项目名称；"
                                 "写操作只能提出待确认动作。只输出 JSON。"
                             ),
                         },

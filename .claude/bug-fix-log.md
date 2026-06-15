@@ -34,6 +34,60 @@
 
 ## 修复记录
 
+## 2026-06-15 - GitHub 对象查询缺少 PR/Issue/Checks 覆盖
+
+### 现象
+
+用户要求“查看 dev-time-agent 的 CI”时，Agent 仍可能进入风险解释或澄清路径，而不是列出该仓库的 GitHub Checks。类似地，PR、Issue 查询也缺少完整对象级能力口径。
+
+### 影响
+
+影响 Dev Time 的核心定位。项目深度依赖 GitHub 事实源，Agent 不能只解释风险，还必须能查询授权范围内的 GitHub repo、PR、Issue 和 CI/Checks。
+
+### 原因
+
+早期 GitHub 工具层只覆盖授权状态和仓库列表，Agent 的 fallback router 没有为 PR、Issue、Checks 建立独立 intent、tool 和 reporter。用户查询 GitHub 对象时，容易被旧的 `risk_explain` 关键词规则吞掉。
+
+### 修复
+
+补齐 `github_pull_requests_list`、`github_issues_list`、`github_checks_list` 三类 intent。新增 `github.pull_requests.list`、`github.issues.list`、`github.checks.list` 工具，分别调用 `dev-time-server` internal API。fallback graph 增加 PR、Issue、Checks reporter，先列仓库定位 repository_id，再读取对应对象并返回 `tool_calls` 和 evidence_refs。
+
+### 验证
+
+- `uv run pytest tests/test_tool_layer.py::test_agent_session_turn_lists_repository_checks_through_fallback_tools -q`
+- `uv run pytest tests/test_tool_layer.py::test_agent_session_turn_lists_github_repositories_through_fallback_tools tests/test_tool_layer.py::test_agent_session_turn_lists_repository_pull_requests_through_fallback_tools tests/test_tool_layer.py::test_agent_session_turn_lists_repository_issues_through_fallback_tools tests/test_tool_layer.py::test_agent_session_turn_lists_repository_checks_through_fallback_tools -q`
+
+### 后续
+
+继续补齐 commits、branches、releases、milestones、workflow runs、review comments 等 GitHub 对象，并建立 GitHub intent eval。
+
+## 2026-06-15 - GitHub 项目查询被误路由为风险澄清
+
+### 现象
+
+用户在 Agent dock 输入“查看我的 github 项目”时，Agent 返回“你想让我评估当前风险、解释证据，还是生成下一步行动计划？”，意图显示为“需要澄清”。
+
+### 影响
+
+影响 GitHub 授权和仓库可见性查询的基础体验。用户明确要求查看 GitHub 项目时，Agent 不应进入风险解释澄清路径。
+
+### 原因
+
+`github.auth.status` 和 `github.repos.list` 工具已经存在，LLM planner 路径也有 GitHub 仓库访问计划归一化，但 deterministic fallback 路径只识别风险、状态、行动计划和自我介绍。未配置 LLM 或走 fallback 时，“查看我的 github 项目”会落入 `clarify`。
+
+### 修复
+
+在 `conversation.py` 增加 GitHub 仓库访问意图识别，返回 `github_repository_list` 和 `requires_tool=true`。在 `fallback_graph_nodes.py` 增加 `github_repository_reporter`，通过 ToolRegistry 调用 `github.auth.status` 和 `github.repos.list`，根据授权状态返回仓库列表或明确的授权提示。同步在 `graph_runtime.py` 接入新 graph node。
+
+### 验证
+
+- `uv run pytest tests/test_tool_layer.py::test_agent_session_turn_lists_github_repositories_through_fallback_tools -q`
+- `uv run ruff check . && uv run pytest -q`
+
+### 后续
+
+需要继续把 GitHub 相关意图纳入 intent eval，覆盖“有哪些仓库”“能看到我的 repo 吗”“GitHub 授权了吗”等同义表达。
+
 ## 2026-06-13 - Agent 对话未走真实 LLM 且答非所问
 
 ### 现象

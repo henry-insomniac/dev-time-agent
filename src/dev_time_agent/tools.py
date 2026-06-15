@@ -18,8 +18,7 @@ class ToolResult:
 class AgentTool(Protocol):
     name: str
 
-    def run(self, payload: dict[str, Any]) -> ToolResult:
-        ...
+    def run(self, payload: dict[str, Any]) -> ToolResult: ...
 
 
 class RiskEvidenceReadTool:
@@ -83,6 +82,83 @@ class PullRequestReadTool:
         )
 
 
+class GitHubAuthStatusTool:
+    name = "github.auth.status"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.get_github_auth_status()
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=[],
+            data=data,
+        )
+
+
+class GitHubReposListTool:
+    name = "github.repos.list"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.list_github_repositories()
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=[],
+            data=data,
+        )
+
+
+class GitHubPullRequestsListTool:
+    name = "github.pull_requests.list"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.list_github_pull_requests(
+            str(payload["repository_id"])
+        )
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=evidence_refs_from_items(data.get("pull_requests", [])),
+            data=data,
+        )
+
+
+class GitHubIssuesListTool:
+    name = "github.issues.list"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.list_github_issues(str(payload["repository_id"]))
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=evidence_refs_from_items(data.get("issues", [])),
+            data=data,
+        )
+
+
+class GitHubChecksListTool:
+    name = "github.checks.list"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.list_github_checks(str(payload["repository_id"]))
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=evidence_refs_from_items(data.get("checks", [])),
+            data=data,
+        )
+
+
 class ActionSuggestionCreateTool:
     name = "action_suggestion.create"
 
@@ -116,6 +192,11 @@ def build_default_tool_registry(server_client: HTTPServerClient) -> ToolRegistry
             ProjectStatusReadTool(server_client),
             CIChecksReadTool(server_client),
             PullRequestReadTool(server_client),
+            GitHubAuthStatusTool(server_client),
+            GitHubReposListTool(server_client),
+            GitHubPullRequestsListTool(server_client),
+            GitHubIssuesListTool(server_client),
+            GitHubChecksListTool(server_client),
             ActionSuggestionCreateTool(server_client),
         ]
     )
@@ -125,7 +206,9 @@ def build_tool_registry_from_env(
     environment: Mapping[str, str] | None = None,
 ) -> ToolRegistry | None:
     loaded_environment = environment or os.environ
-    server_internal_base_url = loaded_environment.get("DEV_TIME_SERVER_INTERNAL_BASE_URL")
+    server_internal_base_url = loaded_environment.get(
+        "DEV_TIME_SERVER_INTERNAL_BASE_URL"
+    )
     if not server_internal_base_url:
         return None
     return build_default_tool_registry(HTTPServerClient(server_internal_base_url))

@@ -73,6 +73,7 @@ def llm_planner(state: AgentState) -> AgentState:
     if conversation_llm is None:
         raise RuntimeError("conversation llm is not configured")
     plan = conversation_llm.plan_turn(state["agent_context"])
+    plan = normalize_tool_plan(plan, state)
     return {
         **state,
         "agent_plan": plan,
@@ -94,6 +95,51 @@ def llm_planner(state: AgentState) -> AgentState:
             ),
         ],
     }
+
+
+def normalize_tool_plan(plan, state: AgentState):
+    available_tools = state["agent_context"].get("available_tools", [])
+    user_message = state["user_message"].lower()
+    if (
+        is_github_repository_access_question(user_message)
+        and "github.auth.status" in available_tools
+        and not has_github_tool(plan.tool_names)
+    ):
+        tool_names = unique_values([*plan.tool_names, "github.auth.status"])
+        if "github.repos.list" in available_tools:
+            tool_names = unique_values([*tool_names, "github.repos.list"])
+        return plan.model_copy(
+            update={
+                "intent": "github_repository_list",
+                "needs_tools": True,
+                "tool_names": tool_names,
+                "answer_strategy": "use_github_tools_before_answering_repository_access",
+                "reasoning_summary": (
+                    "用户询问 GitHub 项目可见范围，必须先调用 GitHub 工具确认授权和仓库列表。"
+                ),
+                "safety_notes": unique_values(
+                    [*plan.safety_notes, "github_access_requires_authorization"]
+                ),
+            }
+        )
+    return plan
+
+
+def has_github_tool(tool_names: list[str]) -> bool:
+    return any(tool_name.startswith("github.") for tool_name in tool_names)
+
+
+def is_github_repository_access_question(user_message: str) -> bool:
+    mentions_github = "github" in user_message or "git hub" in user_message
+    mentions_repository = any(
+        keyword in user_message
+        for keyword in ["项目", "仓库", "repo", "repository", "代码库"]
+    )
+    asks_visibility = any(
+        keyword in user_message
+        for keyword in ["看到", "访问", "有哪些", "什么", "列表", "能看", "可见"]
+    )
+    return mentions_github and mentions_repository and asks_visibility
 
 
 def route_after_llm_planner(state: AgentState) -> str:
@@ -299,6 +345,11 @@ def tool_title(tool_name: str) -> str:
         "project_status.read": "读取项目状态",
         "ci_checks.read": "读取 CI 检查",
         "pull_request.read": "读取 Pull Request",
+        "github.auth.status": "检查 GitHub 授权",
+        "github.repos.list": "列出 GitHub 仓库",
+        "github.pull_requests.list": "列出 GitHub PR",
+        "github.issues.list": "列出 GitHub Issue",
+        "github.checks.list": "列出 GitHub Checks",
         "action_suggestion.create": "创建行动草稿",
     }
     return labels.get(tool_name, f"调用工具 {tool_name}")
