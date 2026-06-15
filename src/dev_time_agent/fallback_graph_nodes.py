@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 from dev_time_agent.conversation import classify_intent, evidence_refs_from_bundle
+from dev_time_agent.entity_resolver import repository_entity, resolve_repository
 from dev_time_agent.graph_state import AgentState
 from dev_time_agent.tools import ToolRegistry
 
@@ -77,7 +78,11 @@ def route_after_intent(state: AgentState) -> str:
         return "self_intro_responder"
     if intent == "refine_previous_response":
         return "memory_responder"
-    if intent == "github_repository_list":
+    if intent in {
+        "github_auth_status",
+        "github_repository_list",
+        "github_repository_detail",
+    }:
         return "github_repository_reporter"
     if intent == "github_pull_requests_list":
         return "github_pull_request_reporter"
@@ -241,6 +246,25 @@ def github_repository_reporter(state: AgentState) -> AgentState:
     )
     trace_events.append({"node": "tool_executor", "title": "检查 GitHub 授权"})
 
+    if state.get("intent") == "github_auth_status":
+        repositories = auth_result.data.get("repositories", [])
+        status = "GitHub 已连接" if auth_result.data.get("connected", False) else "GitHub 未连接"
+        response = (
+            f"{status}，当前可访问 {len(repositories)} 个仓库；"
+            "读取权限包含 metadata、pull requests、checks、issues。"
+        )
+        return {
+            **state,
+            "domain": "github",
+            "entities": {},
+            "capabilities": ["github.auth.status"],
+            "response": response,
+            "evidence_refs": [],
+            "tool_calls": tool_calls,
+            "current_node": "github_repository_reporter",
+            "trace_events": trace_events,
+        }
+
     if not auth_result.data.get("connected", False):
         return {
             **state,
@@ -266,6 +290,26 @@ def github_repository_reporter(state: AgentState) -> AgentState:
     trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
     repositories = repos_result.data.get("repositories", [])
     repository_names = repository_full_names(repositories)
+    if state.get("intent") == "github_repository_detail":
+        repository = resolve_repository(state["user_message"], repositories)
+        if repository is None:
+            response = "我没有找到你提到的 GitHub 仓库，请先确认仓库名称或完成 GitHub 同步。"
+        else:
+            response = format_repository_detail(repository)
+        return {
+            **state,
+            "domain": "github",
+            "entities": {"repository": repository_entity(repository)}
+            if repository is not None
+            else {},
+            "capabilities": ["github.repo.detail"],
+            "response": response,
+            "evidence_refs": [],
+            "tool_calls": tool_calls,
+            "current_node": "github_repository_reporter",
+            "trace_events": trace_events,
+        }
+
     if not repository_names:
         response = "当前 GitHub 已授权，但没有可用于 Dev Time 分析的仓库。"
     else:
@@ -274,6 +318,9 @@ def github_repository_reporter(state: AgentState) -> AgentState:
         )
     return {
         **state,
+        "domain": "github",
+        "entities": {},
+        "capabilities": ["github.repos.list"],
         "response": response,
         "evidence_refs": [],
         "tool_calls": tool_calls,
@@ -314,7 +361,7 @@ def github_pull_request_reporter(state: AgentState) -> AgentState:
     )
     trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
 
-    repository = select_repository_for_message(repositories, state["user_message"])
+    repository = resolve_repository(state["user_message"], repositories)
     if repository is None:
         return {
             **state,
@@ -351,6 +398,9 @@ def github_pull_request_reporter(state: AgentState) -> AgentState:
         )
     return {
         **state,
+        "domain": "github",
+        "entities": {"repository": repository_entity(repository)},
+        "capabilities": ["github.pull_requests.list"],
         "response": response,
         "evidence_refs": evidence_refs,
         "tool_calls": tool_calls,
@@ -391,7 +441,7 @@ def github_issue_reporter(state: AgentState) -> AgentState:
     )
     trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
 
-    repository = select_repository_for_message(repositories, state["user_message"])
+    repository = resolve_repository(state["user_message"], repositories)
     if repository is None:
         return {
             **state,
@@ -428,6 +478,9 @@ def github_issue_reporter(state: AgentState) -> AgentState:
         )
     return {
         **state,
+        "domain": "github",
+        "entities": {"repository": repository_entity(repository)},
+        "capabilities": ["github.issues.list"],
         "response": response,
         "evidence_refs": evidence_refs,
         "tool_calls": tool_calls,
@@ -468,7 +521,7 @@ def github_check_reporter(state: AgentState) -> AgentState:
     )
     trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
 
-    repository = select_repository_for_message(repositories, state["user_message"])
+    repository = resolve_repository(state["user_message"], repositories)
     if repository is None:
         return {
             **state,
@@ -505,6 +558,9 @@ def github_check_reporter(state: AgentState) -> AgentState:
         )
     return {
         **state,
+        "domain": "github",
+        "entities": {"repository": repository_entity(repository)},
+        "capabilities": ["github.checks.list"],
         "response": response,
         "evidence_refs": evidence_refs,
         "tool_calls": tool_calls,
@@ -636,21 +692,19 @@ def repository_full_names(repositories: list[dict]) -> list[str]:
     return names
 
 
-def select_repository_for_message(
-    repositories: list[dict],
-    message: str,
-) -> dict | None:
-    normalized_message = message.strip().lower()
-    for repository in repositories:
-        full_name = str(repository.get("full_name", "")).lower()
-        name = str(repository.get("name", "")).lower()
-        if full_name and full_name in normalized_message:
-            return repository
-        if name and name in normalized_message:
-            return repository
-    if len(repositories) == 1:
-        return repositories[0]
-    return None
+def format_repository_detail(repository: dict) -> str:
+    full_name = repository.get("full_name") or repository.get("name") or "unknown"
+    repository_id = repository.get("id") or "unknown"
+    github_id = repository.get("github_id") or "unknown"
+    project_id = repository.get("project_id") or "未绑定"
+    analysis_enabled = repository.get("analysis_enabled", True)
+    analysis_label = "已启用" if analysis_enabled is not False else "已关闭"
+    sync_status = repository.get("sync_status") or "unknown"
+    return (
+        f"我能看到 GitHub 项目 {full_name}。"
+        f"仓库 ID：{repository_id}；GitHub ID：{github_id}；"
+        f"绑定项目：{project_id}；分析状态：{analysis_label}；同步状态：{sync_status}。"
+    )
 
 
 def evidence_refs_from_pull_requests(pull_requests: list[dict]) -> list[str]:

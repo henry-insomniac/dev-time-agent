@@ -95,6 +95,9 @@ def test_agent_session_turn_reports_project_status_through_graph() -> None:
             "主要阻塞：test failed and is blocking progress."
         ),
         "intent": "project_status",
+        "domain": "",
+        "entities": {},
+        "capabilities": [],
         "confidence": 0.9,
         "evidence_refs": ["event_check-run-1"],
         "current_node": "status_reporter",

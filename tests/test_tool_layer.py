@@ -304,12 +304,91 @@ def test_agent_session_turn_lists_github_repositories_through_fallback_tools() -
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "github_repository_list"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.repos.list"]
+    assert body["entities"] == {}
     assert body["current_node"] == "github_repository_reporter"
     assert "henry-insomniac/dev-time-server" in body["agent_response"]
     assert "henry-insomniac/dev-time-agent" in body["agent_response"]
     assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
         "github.auth.status",
         "github.repos.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
+
+
+def test_agent_session_turn_shows_specific_github_repository_through_fallback_tools() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "查看 dev-time-agent 项目",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_repository_detail"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.repo.detail"]
+    assert body["entities"] == {
+        "repository": {
+            "id": "repo_1002",
+            "full_name": "henry-insomniac/dev-time-agent",
+            "name": "dev-time-agent",
+        }
+    }
+    assert body["current_node"] == "github_repository_reporter"
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+    assert "repo_1002" in body["agent_response"]
+    assert "project_repo_1002" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.auth.status",
+        "github.repos.list",
+    ]
+    assert "评估当前风险" not in body["agent_response"]
+
+
+def test_agent_session_turn_reports_github_auth_status_through_fallback_tools() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_project_repo_1001",
+                "message": "github 授权状态",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_auth_status"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.auth.status"]
+    assert body["entities"] == {}
+    assert body["current_node"] == "github_repository_reporter"
+    assert "GitHub 已连接" in body["agent_response"]
+    assert "2 个仓库" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.auth.status",
     ]
     assert "评估当前风险" not in body["agent_response"]
 
@@ -338,6 +417,15 @@ def test_agent_session_turn_lists_repository_pull_requests_through_fallback_tool
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "github_pull_requests_list"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.pull_requests.list"]
+    assert body["entities"] == {
+        "repository": {
+            "id": "repo_1002",
+            "full_name": "henry-insomniac/dev-time-agent",
+            "name": "dev-time-agent",
+        }
+    }
     assert body["current_node"] == "github_pull_request_reporter"
     assert "PR #18" in body["agent_response"]
     assert "Add GitHub tool layer" in body["agent_response"]
@@ -370,6 +458,15 @@ def test_agent_session_turn_lists_repository_issues_through_fallback_tools() -> 
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "github_issues_list"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.issues.list"]
+    assert body["entities"] == {
+        "repository": {
+            "id": "repo_1002",
+            "full_name": "henry-insomniac/dev-time-agent",
+            "name": "dev-time-agent",
+        }
+    }
     assert body["current_node"] == "github_issue_reporter"
     assert "Issue #42" in body["agent_response"]
     assert "Add issue reader" in body["agent_response"]
@@ -402,6 +499,15 @@ def test_agent_session_turn_lists_repository_checks_through_fallback_tools() -> 
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "github_checks_list"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.checks.list"]
+    assert body["entities"] == {
+        "repository": {
+            "id": "repo_1002",
+            "full_name": "henry-insomniac/dev-time-agent",
+            "name": "dev-time-agent",
+        }
+    }
     assert body["current_node"] == "github_check_reporter"
     assert "test" in body["agent_response"]
     assert "failure" in body["agent_response"]

@@ -395,6 +395,9 @@ def test_agent_session_turn_corrects_llm_plan_when_github_access_needs_tools() -
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "github_repository_list"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.auth.status", "github.repos.list"]
+    assert body["entities"] == {}
     assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
         "github.auth.status",
         "github.repos.list",

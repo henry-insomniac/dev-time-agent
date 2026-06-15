@@ -1,5 +1,6 @@
 from typing import Any
 
+from dev_time_agent.capability_registry import build_default_capability_registry
 from dev_time_agent.conversation import evidence_refs_from_bundle
 from dev_time_agent.schemas import EvidenceBundle
 
@@ -46,6 +47,7 @@ def assemble_agent_context(
         "risk_assessment_id": risk_assessment_id,
         "session_memory": memory,
         "available_tools": available_tools,
+        "capability_registry": capability_registry_context(),
         "tool_results": tool_results or {},
         "evidence_summary": summarize_evidence(evidence_bundle),
     }
@@ -69,3 +71,17 @@ def summarize_evidence(evidence_bundle: EvidenceBundle | None) -> dict[str, Any]
         ],
         "evidence_refs": evidence_refs_from_bundle(evidence_bundle),
     }
+
+
+def capability_registry_context() -> dict[str, dict[str, Any]]:
+    registry = build_default_capability_registry()
+    grouped: dict[str, dict[str, Any]] = {}
+    for capability in registry.for_domain("github"):
+        grouped.setdefault(capability.domain, {})[capability.name] = {
+            "description": capability.description,
+            "required_entities": capability.required_entities,
+            "permissions": capability.permissions,
+            "result_schema": capability.result_schema,
+            "examples": capability.examples,
+        }
+    return grouped

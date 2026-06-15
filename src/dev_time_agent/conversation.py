@@ -1,3 +1,5 @@
+import re
+
 from dev_time_agent.schemas import (
     ConversationTurnRequest,
     ConversationTurnResponse,
@@ -95,6 +97,20 @@ def classify_intent(message: str) -> IntentClassification:
             intent="project_status",
             confidence=0.9,
             requires_evidence=True,
+        )
+    if is_github_auth_status_question(normalized):
+        return IntentClassification(
+            intent="github_auth_status",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
+        )
+    if is_github_repository_detail_question(normalized):
+        return IntentClassification(
+            intent="github_repository_detail",
+            confidence=0.9,
+            requires_evidence=False,
+            requires_tool=True,
         )
     if is_github_repository_access_question(normalized):
         return IntentClassification(
@@ -196,6 +212,42 @@ def is_github_repository_access_question(normalized_message: str) -> bool:
         }
     )
     return mentions_github and mentions_repository and asks_visibility
+
+
+def is_github_repository_detail_question(normalized_message: str) -> bool:
+    mentions_github = "github" in normalized_message or "git hub" in normalized_message
+    mentions_repository = any(
+        keyword in normalized_message
+        for keyword in {"项目", "仓库", "repo", "repository", "代码库"}
+    )
+    asks_visibility = any(
+        keyword in normalized_message
+        for keyword in {"查看", "打开", "访问", "看下", "看一下"}
+    )
+    asks_all = any(
+        keyword in normalized_message
+        for keyword in {"我的", "所有", "全部", "有哪些", "列表", "能看到", "可见", "什么"}
+    )
+    return (
+        (mentions_github or has_repository_like_token(normalized_message))
+        and mentions_repository
+        and asks_visibility
+        and not asks_all
+    )
+
+
+def is_github_auth_status_question(normalized_message: str) -> bool:
+    mentions_github = "github" in normalized_message or "git hub" in normalized_message
+    if not mentions_github:
+        return False
+    return any(
+        keyword in normalized_message
+        for keyword in {"授权", "连接", "配置", "安装", "权限", "状态", "可访问", "能访问"}
+    )
+
+
+def has_repository_like_token(normalized_message: str) -> bool:
+    return re.search(r"[a-z0-9][a-z0-9._-]*[-/][a-z0-9._-]+", normalized_message) is not None
 
 
 def is_github_pull_request_list_question(normalized_message: str) -> bool:

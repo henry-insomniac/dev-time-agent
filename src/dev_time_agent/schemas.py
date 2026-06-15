@@ -102,6 +102,9 @@ class IntentClassification(BaseModel):
 
 class AgentPlan(BaseModel):
     intent: str
+    domain: str = ""
+    entities: dict = Field(default_factory=dict)
+    capabilities: list[str] = Field(default_factory=list)
     confidence: float
     needs_evidence: bool
     needs_tools: bool
@@ -146,6 +149,9 @@ class AgentSessionTurnResponse(BaseModel):
     user_message: str
     agent_response: str
     intent: str
+    domain: str = ""
+    entities: dict = Field(default_factory=dict)
+    capabilities: list[str] = Field(default_factory=list)
     confidence: float
     evidence_refs: list[str]
     current_node: str

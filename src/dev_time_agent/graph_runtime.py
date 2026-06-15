@@ -103,6 +103,9 @@ def run_agent_session_turn(
             "reasoning_trace": [],
             "tool_calls": [],
             "tool_results": {},
+            "domain": "",
+            "entities": {},
+            "capabilities": [],
             "approval_request": None,
         }
     )
@@ -113,6 +116,9 @@ def run_agent_session_turn(
         user_message=state["user_message"],
         agent_response=state["response"],
         intent=state["intent"],
+        domain=state.get("domain", ""),
+        entities=state.get("entities", {}),
+        capabilities=state.get("capabilities", []),
         confidence=state["confidence"],
         evidence_refs=state.get("evidence_refs", []),
         current_node=state["current_node"],

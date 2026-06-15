@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import re
 
 from dev_time_agent.action_drafts import create_action_suggestion_drafts
 from dev_time_agent.context import assemble_agent_context
@@ -78,6 +79,9 @@ def llm_planner(state: AgentState) -> AgentState:
         **state,
         "agent_plan": plan,
         "intent": plan.intent,
+        "domain": plan.domain,
+        "entities": plan.entities,
+        "capabilities": plan.capabilities,
         "confidence": plan.confidence,
         "requires_evidence": plan.needs_evidence,
         "current_node": "llm_planner",
@@ -101,6 +105,48 @@ def normalize_tool_plan(plan, state: AgentState):
     available_tools = state["agent_context"].get("available_tools", [])
     user_message = state["user_message"].lower()
     if (
+        is_github_auth_status_question(user_message)
+        and "github.auth.status" in available_tools
+        and not has_github_tool(plan.tool_names)
+    ):
+        return plan.model_copy(
+            update={
+                "intent": "github_auth_status",
+                "domain": "github",
+                "entities": {},
+                "capabilities": ["github.auth.status"],
+                "needs_tools": True,
+                "tool_names": unique_values([*plan.tool_names, "github.auth.status"]),
+                "answer_strategy": "use_github_auth_tool_before_answering_status",
+                "reasoning_summary": "用户询问 GitHub 授权状态，必须先调用授权状态工具。",
+                "safety_notes": unique_values(
+                    [*plan.safety_notes, "github_access_requires_authorization"]
+                ),
+            }
+        )
+    if (
+        is_github_repository_detail_question(user_message)
+        and "github.repos.list" in available_tools
+        and not has_github_tool(plan.tool_names)
+    ):
+        return plan.model_copy(
+            update={
+                "intent": "github_repository_detail",
+                "domain": "github",
+                "entities": {},
+                "capabilities": ["github.repo.detail"],
+                "needs_tools": True,
+                "tool_names": unique_values([*plan.tool_names, "github.repos.list"]),
+                "answer_strategy": "use_github_tools_before_answering_repository_detail",
+                "reasoning_summary": (
+                    "用户要查看指定 GitHub 项目，必须先读取授权仓库列表并匹配仓库。"
+                ),
+                "safety_notes": unique_values(
+                    [*plan.safety_notes, "github_access_requires_authorization"]
+                ),
+            }
+        )
+    if (
         is_github_repository_access_question(user_message)
         and "github.auth.status" in available_tools
         and not has_github_tool(plan.tool_names)
@@ -111,6 +157,9 @@ def normalize_tool_plan(plan, state: AgentState):
         return plan.model_copy(
             update={
                 "intent": "github_repository_list",
+                "domain": "github",
+                "entities": {},
+                "capabilities": tool_names,
                 "needs_tools": True,
                 "tool_names": tool_names,
                 "answer_strategy": "use_github_tools_before_answering_repository_access",
@@ -140,6 +189,41 @@ def is_github_repository_access_question(user_message: str) -> bool:
         for keyword in ["看到", "访问", "有哪些", "什么", "列表", "能看", "可见"]
     )
     return mentions_github and mentions_repository and asks_visibility
+
+
+def is_github_repository_detail_question(user_message: str) -> bool:
+    mentions_github = "github" in user_message or "git hub" in user_message
+    mentions_repository = any(
+        keyword in user_message
+        for keyword in ["项目", "仓库", "repo", "repository", "代码库"]
+    )
+    asks_visibility = any(
+        keyword in user_message for keyword in ["查看", "打开", "访问", "看下", "看一下"]
+    )
+    asks_all = any(
+        keyword in user_message
+        for keyword in ["我的", "所有", "全部", "有哪些", "列表", "能看到", "可见", "什么"]
+    )
+    return (
+        (mentions_github or has_repository_like_token(user_message))
+        and mentions_repository
+        and asks_visibility
+        and not asks_all
+    )
+
+
+def is_github_auth_status_question(user_message: str) -> bool:
+    mentions_github = "github" in user_message or "git hub" in user_message
+    if not mentions_github:
+        return False
+    return any(
+        keyword in user_message
+        for keyword in ["授权", "连接", "配置", "安装", "权限", "状态", "可访问", "能访问"]
+    )
+
+
+def has_repository_like_token(user_message: str) -> bool:
+    return re.search(r"[a-z0-9][a-z0-9._-]*[-/][a-z0-9._-]+", user_message) is not None
 
 
 def route_after_llm_planner(state: AgentState) -> str:

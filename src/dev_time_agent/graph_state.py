@@ -36,6 +36,9 @@ class AgentState(TypedDict, total=False):
     risk_assessment_id: str
     user_message: str
     intent: str
+    domain: str
+    entities: dict[str, Any]
+    capabilities: list[str]
     confidence: float
     requires_evidence: bool
     evidence_bundle: EvidenceBundle | None
