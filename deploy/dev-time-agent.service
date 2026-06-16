@@ -1,0 +1,17 @@
+[Unit]
+Description=Dev Time Agent Runtime
+After=network-online.target dev-time-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dev-time/agent/current
+EnvironmentFile=/etc/dev-time/agent.env
+ExecStart=/usr/local/bin/uv run --frozen --no-dev uvicorn dev_time_agent.app:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

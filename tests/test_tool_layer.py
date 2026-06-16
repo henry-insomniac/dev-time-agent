@@ -518,6 +518,48 @@ def test_agent_session_turn_lists_repository_checks_through_fallback_tools() -> 
     assert "评估当前风险" not in body["agent_response"]
 
 
+def test_agent_session_turn_diagnoses_failed_pull_request_ci_logs() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1002/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1002",
+                "project_id": "project_repo_1002",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "message": "帮我看看 dev-time-agent #12 PR 为什么红了？",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_pr_ci_diagnosis"
+    assert body["domain"] == "github"
+    assert body["capabilities"] == ["github.checks.logs"]
+    assert body["entities"]["repository"]["name"] == "dev-time-agent"
+    assert body["entities"]["pr_number"] == 12
+    assert "ESLint" in body["agent_response"]
+    assert "no-unused-vars" in body["agent_response"]
+    assert "src/planner.ts" in body["agent_response"]
+    assert "Next Step" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.repos.list",
+        "github.pull_requests.list",
+        "github.checks.list",
+        "github.checks.logs",
+    ]
+    assert body["tool_calls"][-1]["input"] == {
+        "repository_id": "repo_1002",
+        "run_id": 812,
+    }
+
+
 @contextmanager
 def fake_dev_time_server() -> Iterator[str]:
     class Handler(BaseHTTPRequestHandler):

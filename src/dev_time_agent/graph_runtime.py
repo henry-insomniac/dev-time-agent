@@ -7,6 +7,7 @@ from dev_time_agent.fallback_graph_nodes import (
     context_loader,
     github_check_reporter,
     github_issue_reporter,
+    github_pr_ci_diagnoser,
     github_pull_request_reporter,
     github_repository_reporter,
     intent_router,
@@ -142,6 +143,7 @@ def build_agent_graph():
     graph.add_node("self_intro_responder", self_intro_responder)
     graph.add_node("clarify_responder", clarify_responder)
     graph.add_node("github_check_reporter", github_check_reporter)
+    graph.add_node("github_pr_ci_diagnoser", github_pr_ci_diagnoser)
     graph.add_node("github_issue_reporter", github_issue_reporter)
     graph.add_node("github_pull_request_reporter", github_pull_request_reporter)
     graph.add_node("github_repository_reporter", github_repository_reporter)
@@ -179,6 +181,7 @@ def build_agent_graph():
             "self_intro_responder": "self_intro_responder",
             "memory_responder": "memory_responder",
             "github_check_reporter": "github_check_reporter",
+            "github_pr_ci_diagnoser": "github_pr_ci_diagnoser",
             "github_issue_reporter": "github_issue_reporter",
             "github_pull_request_reporter": "github_pull_request_reporter",
             "github_repository_reporter": "github_repository_reporter",
@@ -200,6 +203,7 @@ def build_agent_graph():
     graph.add_edge("self_intro_responder", END)
     graph.add_edge("clarify_responder", END)
     graph.add_edge("github_check_reporter", END)
+    graph.add_edge("github_pr_ci_diagnoser", END)
     graph.add_edge("github_issue_reporter", END)
     graph.add_edge("github_pull_request_reporter", END)
     graph.add_edge("github_repository_reporter", END)

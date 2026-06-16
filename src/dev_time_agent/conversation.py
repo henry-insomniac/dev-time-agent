@@ -105,6 +105,13 @@ def classify_intent(message: str) -> IntentClassification:
             requires_evidence=False,
             requires_tool=True,
         )
+    if is_github_pr_ci_diagnosis_question(normalized):
+        return IntentClassification(
+            intent="github_pr_ci_diagnosis",
+            confidence=0.92,
+            requires_evidence=False,
+            requires_tool=True,
+        )
     if is_github_repository_detail_question(normalized):
         return IntentClassification(
             intent="github_repository_detail",
@@ -248,6 +255,21 @@ def is_github_auth_status_question(normalized_message: str) -> bool:
 
 def has_repository_like_token(normalized_message: str) -> bool:
     return re.search(r"[a-z0-9][a-z0-9._-]*[-/][a-z0-9._-]+", normalized_message) is not None
+
+
+def is_github_pr_ci_diagnosis_question(normalized_message: str) -> bool:
+    mentions_pull_request = (
+        "pr" in normalized_message or "pull request" in normalized_message
+    )
+    mentions_pr_number = re.search(
+        r"(?:#\s*\d+\s*pr\b|\bpr\s*#?\s*\d+)",
+        normalized_message,
+    )
+    asks_failure_reason = any(
+        keyword in normalized_message
+        for keyword in {"为什么", "红了", "失败", "挂了", "failed", "failure", "broken"}
+    )
+    return (mentions_pull_request or mentions_pr_number is not None) and asks_failure_reason
 
 
 def is_github_pull_request_list_question(normalized_message: str) -> bool:

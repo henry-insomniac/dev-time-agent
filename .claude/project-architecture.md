@@ -39,8 +39,13 @@
 ```text
 .
 ├── .env.example
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
 ├── .gitignore
 ├── AGENTS.md
+├── deploy/
+│   └── dev-time-agent.service
 ├── src/
 │   └── dev_time_agent/
 │       ├── __init__.py
@@ -104,6 +109,14 @@ Agent 入口文件。用于说明项目目标、协作原则和关键文档索�
 ### `.claude/`
 
 项目长期上下文目录。这里保存架构、规范、协作流程和故障记录，避免重要信息散落在对话或临时笔记中。
+
+### `.github/workflows/deploy.yml`
+
+Agent Runtime 生产 CI/CD workflow。Push 到 `main` 或手动触发时，先运行 `uv sync --frozen`、`ruff` 和 `pytest`；验证通过后通过 GitHub Actions Secrets 中的 SSH 凭证上传源码包到服务器，执行 `uv sync --frozen --no-dev` 并重启 `dev-time-agent`。
+
+### `deploy/`
+
+生产部署配置目录。`dev-time-agent.service` 定义 systemd 运行方式，Agent 仅监听 `127.0.0.1:8001`，通过 `DEV_TIME_SERVER_INTERNAL_BASE_URL=http://127.0.0.1:8080` 调用后端 internal API。
 
 ### `.claude/dev-time-agent-architecture.md`
 
@@ -178,6 +191,7 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | --- | --- | --- | --- |
 | 2026-06-11 | 初始化 Agent 项目文档 | 建立项目长期上下文和协作基线 | 已创建 `AGENTS.md` 与 `.claude` 文档 |
 | 2026-06-11 | 同步 Dev Time 三服务架构和 Agent Runtime 草案 | 明确 `dev-time-agent` 作为独立 Agent 服务的边界 | 已同步 `product-prd.md`、`technical-architecture.md` 与 `dev-time-agent-architecture.md` |
+| 2026-06-16 | 增加 Agent GitHub Actions 生产部署 workflow | 1.0 需要通过 CI/CD 验证并发布 Agent Runtime 到服务器 systemd | `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy.yml")'` |
 | 2026-06-11 | 初始化 Python Agent 工程骨架 | 建立 M0 可验证 Agent Runtime 基础 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 增加 AgentJob worker 骨架 | 建立 M8 AgentJob 消费和 AgentArtifact 回写切片 | `uv run ruff check . && uv run pytest` |
 | 2026-06-11 | 增加 EvidenceBundle schema | Agent 可校验 server internal evidence bundle payload | `uv run ruff check . && uv run pytest` |

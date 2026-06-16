@@ -1,0 +1,89 @@
+name: Deploy dev-time-agent
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: dev-time-agent-production
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run pytest
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package agent source
+        run: |
+          tar \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='.ruff_cache' \
+            --exclude='.pytest_cache' \
+            --exclude='__pycache__' \
+            -czf dev-time-agent.tar.gz .
+      - name: Install SSH key
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+      - name: Upload agent artifacts
+        run: |
+          scp -i ~/.ssh/deploy_key -P "$DEPLOY_PORT" \
+            dev-time-agent.tar.gz deploy/dev-time-agent.service \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/"
+      - name: Activate agent
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "GITHUB_SHA=$GITHUB_SHA bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          release=/opt/dev-time/agent/releases/$GITHUB_SHA
+          install -d "$release" /etc/dev-time /var/lib/dev-time-agent
+          tar -xzf /tmp/dev-time-agent.tar.gz -C "$release"
+          ln -sfn "$release" /opt/dev-time/agent/current
+          rm -f /tmp/dev-time-agent.tar.gz
+
+          if ! command -v uv >/dev/null 2>&1; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            install -m 0755 /root/.local/bin/uv /usr/local/bin/uv
+          fi
+
+          if [ ! -f /etc/dev-time/agent.env ]; then
+            {
+              printf '%s\n' 'DEV_TIME_SERVER_INTERNAL_BASE_URL=http://127.0.0.1:8080'
+              printf '%s\n' 'DEV_TIME_AGENT_SESSION_MEMORY_DB_PATH=/var/lib/dev-time-agent/session-memory.sqlite3'
+            } > /etc/dev-time/agent.env
+            chmod 600 /etc/dev-time/agent.env
+          fi
+
+          cd /opt/dev-time/agent/current
+          uv sync --frozen --no-dev
+          install -m 0644 /tmp/dev-time-agent.service /etc/systemd/system/dev-time-agent.service
+          systemctl daemon-reload
+          systemctl enable --now dev-time-agent
+          systemctl restart dev-time-agent
+          REMOTE

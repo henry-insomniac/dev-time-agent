@@ -1,3 +1,6 @@
+import re
+
+
 def resolve_github_entities(
     message: str,
     repositories: list[dict],
@@ -33,6 +36,14 @@ def resolve_repository(message: str, repositories: list[dict]) -> dict | None:
     if len(repositories) == 1:
         return repositories[0]
     return None
+
+
+def extract_pr_number(message: str) -> int | None:
+    match = re.search(r"(?:#\s*(\d+)\s*pr\b|\bpr\s*#?\s*(\d+))", message, re.I)
+    if match is None:
+        return None
+    raw_number = match.group(1) or match.group(2)
+    return int(raw_number)
 
 
 def repository_entity(repository: dict) -> dict:

@@ -75,6 +75,12 @@ class HTTPServerClient:
             f"/internal/github/repositories/{repository_id}/checks",
         )
 
+    def get_github_check_logs(self, repository_id: str, run_id: int | str) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            f"/internal/github/repositories/{repository_id}/checks/{run_id}/logs",
+        )
+
     def create_action_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", "/internal/action-suggestions", payload)
 

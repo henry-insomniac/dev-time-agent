@@ -1,7 +1,12 @@
+import re
 from collections.abc import Callable
 
 from dev_time_agent.conversation import classify_intent, evidence_refs_from_bundle
-from dev_time_agent.entity_resolver import repository_entity, resolve_repository
+from dev_time_agent.entity_resolver import (
+    extract_pr_number,
+    repository_entity,
+    resolve_repository,
+)
 from dev_time_agent.graph_state import AgentState
 from dev_time_agent.tools import ToolRegistry
 
@@ -84,6 +89,8 @@ def route_after_intent(state: AgentState) -> str:
         "github_repository_detail",
     }:
         return "github_repository_reporter"
+    if intent == "github_pr_ci_diagnosis":
+        return "github_pr_ci_diagnoser"
     if intent == "github_pull_requests_list":
         return "github_pull_request_reporter"
     if intent == "github_issues_list":
@@ -569,6 +576,136 @@ def github_check_reporter(state: AgentState) -> AgentState:
     }
 
 
+def github_pr_ci_diagnoser(state: AgentState) -> AgentState:
+    tool_registry = _tool_registry_provider()
+    if tool_registry is None:
+        return {
+            **state,
+            "response": (
+                "我现在不能读取 GitHub CI 日志，因为 Agent Runtime 没有配置 "
+                "dev-time-server internal API。请先配置 DEV_TIME_SERVER_INTERNAL_BASE_URL。"
+            ),
+            "evidence_refs": [],
+            "current_node": "github_pr_ci_diagnoser",
+            "trace_events": [
+                *state.get("trace_events", []),
+                {"node": "github_pr_ci_diagnoser", "title": "GitHub 工具未配置"},
+            ],
+        }
+
+    pr_number = extract_pr_number(state["user_message"])
+    tool_calls = list(state.get("tool_calls", []))
+    trace_events = list(state.get("trace_events", []))
+
+    repos_result = tool_registry.run("github.repos.list", {})
+    repositories = repos_result.data.get("repositories", [])
+    tool_calls.append(
+        {
+            "name": "github.repos.list",
+            "status": "succeeded",
+            "input": {},
+            "evidence_refs": [],
+        }
+    )
+    trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
+
+    repository = resolve_repository(state["user_message"], repositories)
+    if repository is None or pr_number is None:
+        return {
+            **state,
+            "response": "我需要明确的仓库和 PR 编号，才能诊断这次 CI 失败。",
+            "evidence_refs": [],
+            "tool_calls": tool_calls,
+            "current_node": "github_pr_ci_diagnoser",
+            "trace_events": trace_events,
+        }
+
+    repository_id = str(repository["id"])
+    prs_result = tool_registry.run(
+        "github.pull_requests.list",
+        {"repository_id": repository_id},
+    )
+    pull_requests = prs_result.data.get("pull_requests", [])
+    pr_evidence_refs = evidence_refs_from_pull_requests(pull_requests)
+    tool_calls.append(
+        {
+            "name": "github.pull_requests.list",
+            "status": "succeeded",
+            "input": {"repository_id": repository_id},
+            "evidence_refs": pr_evidence_refs,
+        }
+    )
+    trace_events.append({"node": "tool_executor", "title": "读取 PR 列表"})
+
+    checks_result = tool_registry.run(
+        "github.checks.list",
+        {"repository_id": repository_id},
+    )
+    checks = checks_result.data.get("checks", [])
+    checks_evidence_refs = evidence_refs_from_items(checks)
+    tool_calls.append(
+        {
+            "name": "github.checks.list",
+            "status": "succeeded",
+            "input": {"repository_id": repository_id},
+            "evidence_refs": checks_evidence_refs,
+        }
+    )
+    trace_events.append({"node": "tool_executor", "title": "读取失败 Checks"})
+
+    failed_check = first_failed_check(checks)
+    run_id = failed_check_run_id(failed_check) if failed_check else None
+    if run_id is None:
+        response = f"PR #{pr_number} 当前没有可诊断的失败 CI run。"
+        return {
+            **state,
+            "domain": "github",
+            "entities": {
+                "repository": repository_entity(repository),
+                "pr_number": pr_number,
+            },
+            "capabilities": ["github.checks.logs"],
+            "response": response,
+            "evidence_refs": [*pr_evidence_refs, *checks_evidence_refs],
+            "tool_calls": tool_calls,
+            "current_node": "github_pr_ci_diagnoser",
+            "trace_events": trace_events,
+        }
+
+    logs_result = tool_registry.run(
+        "github.checks.logs",
+        {"repository_id": repository_id, "run_id": run_id},
+    )
+    log_data = logs_result.data
+    log_evidence_refs = logs_result.evidence_refs
+    tool_calls.append(
+        {
+            "name": "github.checks.logs",
+            "status": "succeeded",
+            "input": {"repository_id": repository_id, "run_id": run_id},
+            "evidence_refs": log_evidence_refs,
+        }
+    )
+    trace_events.append({"node": "tool_executor", "title": "读取失败 Check 日志"})
+
+    response = format_ci_log_diagnosis(pr_number, failed_check, log_data)
+    return {
+        **state,
+        "domain": "github",
+        "entities": {
+            "repository": repository_entity(repository),
+            "pr_number": pr_number,
+            "run_id": run_id,
+        },
+        "capabilities": ["github.checks.logs"],
+        "response": response,
+        "evidence_refs": [*pr_evidence_refs, *checks_evidence_refs, *log_evidence_refs],
+        "tool_calls": tool_calls,
+        "current_node": "github_pr_ci_diagnoser",
+        "trace_events": trace_events,
+    }
+
+
 def status_reporter(state: AgentState) -> AgentState:
     bundle = state.get("evidence_bundle")
     memory = state.get("memory", {}) if memory_is_current_for_state(state) else {}
@@ -718,6 +855,58 @@ def evidence_refs_from_items(items: list[dict]) -> list[str]:
         if evidence_ref:
             refs.append(str(evidence_ref))
     return refs
+
+
+def first_failed_check(checks: list[dict]) -> dict | None:
+    for check in checks:
+        if str(check.get("conclusion", "")).lower() == "failure":
+            return check
+    return checks[0] if checks else None
+
+
+def failed_check_run_id(check: dict | None) -> int | None:
+    if check is None:
+        return None
+    raw_run_id = check.get("run_id") or check.get("id")
+    if raw_run_id:
+        try:
+            return int(raw_run_id)
+        except (TypeError, ValueError):
+            pass
+    match = re.search(r"/runs/(\d+)", str(check.get("url", "")))
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def format_ci_log_diagnosis(pr_number: int, check: dict, log_data: dict) -> str:
+    log_excerpt = str(log_data.get("log_excerpt") or "")
+    check_name = str(log_data.get("check_name") or check.get("name") or "CI")
+    linter_name = (
+        "ESLint"
+        if "eslint" in check_name.lower() or "eslint" in log_excerpt.lower()
+        else check_name
+    )
+    unused_error_count = log_excerpt.count("no-unused-vars")
+    first_location = first_log_location(log_excerpt)
+    if unused_error_count > 0:
+        root_cause = (
+            f"PR #{pr_number} 的 CI 失败是因为 {linter_name} 报了 "
+            f"{unused_error_count} 个 no-unused-vars 错误。"
+        )
+    else:
+        root_cause = f"PR #{pr_number} 的 CI 失败来自 {check_name}。"
+    next_step = "Next Step：查看失败日志片段并修复对应代码。"
+    if first_location:
+        next_step = f"Next Step：先检查 {first_location}，移除未使用变量或补上实际使用。"
+    return f"{root_cause}{next_step}"
+
+
+def first_log_location(log_excerpt: str) -> str:
+    match = re.search(r"([A-Za-z0-9_./-]+\.[A-Za-z0-9]+):(\d+)", log_excerpt)
+    if match is None:
+        return ""
+    return f"{match.group(1)} 第 {match.group(2)} 行"
 
 
 def format_pull_request(pull_request: dict) -> str:

@@ -96,6 +96,16 @@ def fake_dev_time_server(github_connected: bool = False) -> Iterator[str]:
                     {
                         "pull_requests": [
                             {
+                                "evidence_ref": "event_pull-request-12",
+                                "number": 12,
+                                "title": "Wire CI diagnostics",
+                                "state": "open",
+                                "url": (
+                                    "https://github.test/"
+                                    "henry-insomniac/dev-time-agent/pull/12"
+                                ),
+                            },
+                            {
                                 "evidence_ref": "event_pull-request-18",
                                 "number": 18,
                                 "title": "Add GitHub tool layer",
@@ -134,7 +144,19 @@ def fake_dev_time_server(github_connected: bool = False) -> Iterator[str]:
                     {
                         "checks": [
                             {
+                                "evidence_ref": "event_check-run-12",
+                                "run_id": 812,
+                                "name": "eslint",
+                                "status": "completed",
+                                "conclusion": "failure",
+                                "url": (
+                                    "https://github.test/"
+                                    "henry-insomniac/dev-time-agent/actions/runs/812"
+                                ),
+                            },
+                            {
                                 "evidence_ref": "event_check-run-421",
+                                "run_id": 421,
                                 "name": "test",
                                 "status": "completed",
                                 "conclusion": "failure",
@@ -144,6 +166,28 @@ def fake_dev_time_server(github_connected: bool = False) -> Iterator[str]:
                                 ),
                             }
                         ]
+                    }
+                )
+                return
+
+            if (
+                self.path
+                == "/internal/github/repositories/repo_1002/checks/812/logs"
+            ):
+                self.send_json(
+                    {
+                        "run_id": 812,
+                        "check_name": "eslint",
+                        "conclusion": "failure",
+                        "log_excerpt": (
+                            "src/planner.ts:45:7 error 'draftPlan' is assigned "
+                            "a value but never used no-unused-vars\n"
+                            "src/router.ts:18:10 error 'route' is defined but "
+                            "never used no-unused-vars\n"
+                            "src/client.ts:11:3 error 'debug' is defined but "
+                            "never used no-unused-vars"
+                        ),
+                        "evidence_refs": ["github_live_check_run_812_logs"],
                     }
                 )
                 return

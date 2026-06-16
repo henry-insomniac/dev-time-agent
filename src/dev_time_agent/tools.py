@@ -159,6 +159,24 @@ class GitHubChecksListTool:
         )
 
 
+class GitHubChecksLogsTool:
+    name = "github.checks.logs"
+
+    def __init__(self, server_client: HTTPServerClient) -> None:
+        self.server_client = server_client
+
+    def run(self, payload: dict[str, Any]) -> ToolResult:
+        data = self.server_client.get_github_check_logs(
+            str(payload["repository_id"]),
+            payload["run_id"],
+        )
+        return ToolResult(
+            evidence_bundle=None,
+            evidence_refs=list(data.get("evidence_refs", [])),
+            data=data,
+        )
+
+
 class ActionSuggestionCreateTool:
     name = "action_suggestion.create"
 
@@ -197,6 +215,7 @@ def build_default_tool_registry(server_client: HTTPServerClient) -> ToolRegistry
             GitHubPullRequestsListTool(server_client),
             GitHubIssuesListTool(server_client),
             GitHubChecksListTool(server_client),
+            GitHubChecksLogsTool(server_client),
             ActionSuggestionCreateTool(server_client),
         ]
     )

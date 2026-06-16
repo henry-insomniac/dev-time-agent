@@ -91,5 +91,14 @@ def build_default_capability_registry() -> CapabilityRegistry:
                 result_schema="CheckRun[]",
                 examples=["查看 dev-time-agent 的 CI"],
             ),
+            Capability(
+                name="github.checks.logs",
+                domain="github",
+                description="Read failed CI check logs for diagnosis.",
+                required_entities=["repository", "run_id"],
+                permissions=["checks:read"],
+                result_schema="CheckLogExcerpt",
+                examples=["帮我看看 dev-time-agent #12 PR 为什么红了"],
+            ),
         ]
     )
