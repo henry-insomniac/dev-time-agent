@@ -142,6 +142,235 @@ def test_agent_session_turn_reads_project_ci_and_pr_tools_for_status() -> None:
     ]
 
 
+def test_agent_session_turn_exposes_page_context_to_llm_planner() -> None:
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
+    from fake_agent_llm import FakeConversationLLM
+
+    configure_conversation_llm_for_tests(
+        FakeConversationLLM(
+            expected_user_message="查看当前仓库状态",
+            expected_page_context={
+                "available": True,
+                "route": "/projects/project_repo_1002/agent",
+                "locale": "zh-CN",
+                "timezone": "Asia/Shanghai",
+                "user_role": "developer",
+                "selected_resource": {
+                    "type": "repository",
+                    "id": "repo_1002",
+                    "name": "henry-insomniac/dev-time-agent",
+                },
+                "visible_fields": {
+                    "repository_full_name": "henry-insomniac/dev-time-agent"
+                },
+                "recent_actions": [],
+            },
+            plan=AgentPlan(
+                intent="github_repository_detail",
+                domain="github",
+                entities={
+                    "repository": {
+                        "id": "repo_1002",
+                        "full_name": "henry-insomniac/dev-time-agent",
+                        "name": "dev-time-agent",
+                    }
+                },
+                capabilities=["github.repo.detail"],
+                confidence=0.91,
+                needs_evidence=False,
+                needs_tools=False,
+                tool_names=[],
+                answer_strategy="use_page_context_repository",
+                reasoning_summary="用户询问当前仓库，使用 PageContext 中选中仓库规划。",
+                safety_notes=[],
+            ),
+            draft=AgentDraftResponse(
+                answer="当前上下文仓库是 henry-insomniac/dev-time-agent。",
+                evidence_refs=[],
+                suggested_actions=[],
+                reasoning_summary="基于 PageContext 生成当前仓库状态说明。",
+                confidence=0.9,
+            ),
+            verification=ResponseVerification(
+                passed=True,
+                issues=[],
+                rewrite_instruction="",
+            ),
+        )
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/agent/sessions/session_project_repo_1002/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1002",
+            "project_id": "project_repo_1002",
+            "risk_assessment_id": "risk_project_repo_1002",
+            "message": "查看当前仓库状态",
+            "page_context": {
+                "route": "/projects/project_repo_1002/agent",
+                "locale": "zh-CN",
+                "timezone": "Asia/Shanghai",
+                "user_role": "developer",
+                "selected_resource": {
+                    "type": "repository",
+                    "id": "repo_1002",
+                    "name": "henry-insomniac/dev-time-agent",
+                },
+                "visible_fields": {
+                    "repository_full_name": "henry-insomniac/dev-time-agent"
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_repository_detail"
+    assert body["entities"]["repository"]["id"] == "repo_1002"
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+
+
+def test_agent_session_turn_blocks_unregistered_tool_from_llm_plan() -> None:
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
+    from fake_agent_llm import FakeConversationLLM
+
+    with fake_dev_time_server() as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(
+            FakeConversationLLM(
+                expected_user_message="删除这个仓库",
+                plan=AgentPlan(
+                    intent="dangerous_tool_request",
+                    confidence=0.9,
+                    needs_evidence=False,
+                    needs_tools=True,
+                    tool_names=["github.repository.delete"],
+                    answer_strategy="block_unknown_tool",
+                    reasoning_summary="用户请求需要不存在的写工具，必须阻断。",
+                    safety_notes=["unknown_tool"],
+                ),
+                draft=AgentDraftResponse(
+                    answer="我不能执行未注册或未授权的工具。",
+                    evidence_refs=[],
+                    suggested_actions=[],
+                    reasoning_summary="未注册工具已被阻断。",
+                    confidence=0.88,
+                ),
+                verification=ResponseVerification(
+                    passed=True,
+                    issues=[],
+                    rewrite_instruction="",
+                ),
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_123",
+                "message": "删除这个仓库",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["agent_response"] == "我不能执行未注册或未授权的工具。"
+    assert body["tool_calls"] == [
+        {
+            "name": "github.repository.delete",
+            "status": "blocked",
+            "input": {},
+            "error": "unknown_tool",
+            "evidence_refs": [],
+        }
+    ]
+    assert any(
+        step["stage"] == "tool_call"
+        and step["tool_call"]["status"] == "blocked"
+        and step["tool_call"]["error"] == "unknown_tool"
+        for step in body["reasoning_trace"]
+    )
+
+
+def test_agent_session_turn_blocks_approval_required_tool_from_plan() -> None:
+    from dev_time_agent.schemas import (
+        AgentDraftResponse,
+        AgentPlan,
+        ResponseVerification,
+    )
+    from fake_agent_llm import FakeConversationLLM
+
+    with fake_dev_time_server() as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        configure_conversation_llm_for_tests(
+            FakeConversationLLM(
+                expected_user_message="直接创建 PR 评论",
+                plan=AgentPlan(
+                    intent="direct_write_tool_request",
+                    confidence=0.9,
+                    needs_evidence=False,
+                    needs_tools=True,
+                    tool_names=["action_suggestion.create"],
+                    answer_strategy="block_approval_required_tool",
+                    reasoning_summary="写操作工具不能由 planner 直接执行。",
+                    safety_notes=["approval_required"],
+                ),
+                draft=AgentDraftResponse(
+                    answer="该操作需要先生成待确认草稿，不能直接执行。",
+                    evidence_refs=[],
+                    suggested_actions=[],
+                    reasoning_summary="approval-required 工具已被阻断。",
+                    confidence=0.88,
+                ),
+                verification=ResponseVerification(
+                    passed=True,
+                    issues=[],
+                    rewrite_instruction="",
+                ),
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1001/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1001",
+                "project_id": "project_repo_1001",
+                "risk_assessment_id": "risk_123",
+                "message": "直接创建 PR 评论",
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tool_calls"] == [
+        {
+            "name": "action_suggestion.create",
+            "status": "blocked",
+            "input": {},
+            "error": "approval_required",
+            "evidence_refs": [],
+        }
+    ]
+    assert body["approval_request"] is None
+
+
 def test_agent_session_turn_creates_pending_action_suggestion_draft() -> None:
     from dev_time_agent.schemas import (
         AgentDraftResponse,

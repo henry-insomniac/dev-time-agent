@@ -135,6 +135,41 @@ def test_agent_session_turn_reports_project_status_through_graph() -> None:
     }
 
 
+def test_agent_session_turn_includes_page_context_in_runtime_trace() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/agent/sessions/session_project_repo_1001/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1001",
+            "project_id": "project_repo_1001",
+            "risk_assessment_id": "risk_project_repo_1001",
+            "message": "查看当前仓库的状态",
+            "page_context": {
+                "route": "/projects/project_repo_1001/agent",
+                "locale": "zh-CN",
+                "timezone": "Asia/Shanghai",
+                "user_role": "developer",
+                "selected_resource": {
+                    "type": "repository",
+                    "id": "repo_1002",
+                    "name": "henry-insomniac/dev-time-agent",
+                },
+                "visible_fields": {
+                    "project_name": "dev-time-agent",
+                    "repository_full_name": "henry-insomniac/dev-time-agent",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reasoning_trace"][0]["stage"] == "context"
+    assert "/projects/project_repo_1001/agent" in body["reasoning_trace"][0]["summary"]
+    assert "henry-insomniac/dev-time-agent" in body["reasoning_trace"][0]["summary"]
+
+
 def test_legacy_conversation_turn_uses_graph_for_project_status() -> None:
     client = TestClient(app)
 

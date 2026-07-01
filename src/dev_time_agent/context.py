@@ -2,7 +2,8 @@ from typing import Any
 
 from dev_time_agent.capability_registry import build_default_capability_registry
 from dev_time_agent.conversation import evidence_refs_from_bundle
-from dev_time_agent.schemas import EvidenceBundle
+from dev_time_agent.docs_retrieval import retrieve_docs
+from dev_time_agent.schemas import EvidenceBundle, PageContext
 
 
 CAPABILITIES = [
@@ -36,6 +37,7 @@ def assemble_agent_context(
     memory: dict[str, Any],
     evidence_bundle: EvidenceBundle | None,
     available_tools: list[str],
+    page_context: PageContext | None = None,
     tool_results: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -45,10 +47,12 @@ def assemble_agent_context(
         "user_message": user_message,
         "project_id": project_id,
         "risk_assessment_id": risk_assessment_id,
+        "page_context": summarize_page_context(page_context),
         "session_memory": memory,
         "available_tools": available_tools,
         "capability_registry": capability_registry_context(),
         "tool_results": tool_results or {},
+        "retrieved_docs": summarize_retrieved_docs(user_message),
         "evidence_summary": summarize_evidence(evidence_bundle),
     }
 
@@ -73,6 +77,24 @@ def summarize_evidence(evidence_bundle: EvidenceBundle | None) -> dict[str, Any]
     }
 
 
+def summarize_page_context(page_context: PageContext | None) -> dict[str, Any]:
+    if page_context is None:
+        return {"available": False}
+    selected_resource = None
+    if page_context.selected_resource is not None:
+        selected_resource = page_context.selected_resource.model_dump()
+    return {
+        "available": True,
+        "route": page_context.route,
+        "locale": page_context.locale,
+        "timezone": page_context.timezone,
+        "user_role": page_context.user_role,
+        "selected_resource": selected_resource,
+        "visible_fields": page_context.visible_fields,
+        "recent_actions": page_context.recent_actions,
+    }
+
+
 def capability_registry_context() -> dict[str, dict[str, Any]]:
     registry = build_default_capability_registry()
     grouped: dict[str, dict[str, Any]] = {}
@@ -85,3 +107,32 @@ def capability_registry_context() -> dict[str, dict[str, Any]]:
             "examples": capability.examples,
         }
     return grouped
+
+
+def summarize_retrieved_docs(user_message: str) -> dict[str, Any]:
+    if not should_retrieve_docs(user_message):
+        return {"available": False, "chunks": []}
+    chunks = retrieve_docs(user_message)
+    return {
+        "available": len(chunks) > 0,
+        "chunks": [chunk.model_dump() for chunk in chunks],
+    }
+
+
+def should_retrieve_docs(user_message: str) -> bool:
+    normalized = user_message.lower()
+    return any(
+        keyword in normalized
+        for keyword in [
+            "什么是",
+            "如何",
+            "怎么",
+            "文档",
+            "docs",
+            "架构",
+            "排障",
+            "troubleshooting",
+            "tool layer",
+            "github 能力层",
+        ]
+    )

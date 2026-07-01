@@ -2,6 +2,11 @@ from collections.abc import Callable
 import re
 
 from dev_time_agent.action_drafts import create_action_suggestion_drafts
+from dev_time_agent.agent_program_executor import execute_agent_program
+from dev_time_agent.capability_registry import (
+    CapabilityRegistry,
+    build_default_capability_registry,
+)
 from dev_time_agent.context import assemble_agent_context
 from dev_time_agent.graph_state import AgentState, ConversationLLM
 from dev_time_agent.schemas import ReasoningTraceStep
@@ -36,6 +41,10 @@ def context_assembler(state: AgentState) -> AgentState:
     evidence_summary = "当前请求未携带风险证据。"
     if state.get("evidence_bundle") is not None:
         evidence_summary = "当前请求已携带风险证据。"
+    page_context_summary = describe_page_context_for_trace(state.get("page_context"))
+    context_summary = evidence_summary
+    if page_context_summary:
+        context_summary = f"{evidence_summary} {page_context_summary}"
     return {
         **state,
         "agent_context": assemble_agent_context(
@@ -45,6 +54,7 @@ def context_assembler(state: AgentState) -> AgentState:
             memory=state.get("memory", {}),
             evidence_bundle=state.get("evidence_bundle"),
             available_tools=available_tools,
+            page_context=state.get("page_context"),
             tool_results=state.get("tool_results", {}),
         ),
         "current_node": "context_assembler",
@@ -57,7 +67,7 @@ def context_assembler(state: AgentState) -> AgentState:
             ReasoningTraceStep(
                 stage="context",
                 title="组装上下文",
-                summary=evidence_summary,
+                summary=context_summary,
             ),
         ],
     }
@@ -241,8 +251,6 @@ def llm_tool_executor(state: AgentState) -> AgentState:
     tool_names = list(plan.tool_names)
     if plan.needs_evidence and not tool_names:
         tool_names.append("risk_evidence.read")
-    if not tool_names:
-        return state
 
     evidence_bundle = state.get("evidence_bundle")
     evidence_refs = list(state.get("evidence_refs", []))
@@ -250,11 +258,86 @@ def llm_tool_executor(state: AgentState) -> AgentState:
     tool_results = dict(state.get("tool_results", {}))
     reasoning_trace = list(state.get("reasoning_trace", []))
     trace_events = list(state.get("trace_events", []))
+    available_tool_names = set(tool_registry.names())
+    capability_registry = build_default_capability_registry()
+
+    if plan.program is not None:
+        program_result = execute_agent_program(
+            plan.program,
+            tool_registry,
+            capability_registry,
+        )
+        evidence_refs = unique_values([*evidence_refs, *program_result.evidence_refs])
+        tool_calls.extend(program_result.tool_calls)
+        tool_results.update(program_result.tool_results)
+        tool_results["agent_program"] = {
+            "status": program_result.status,
+            "error": program_result.error,
+            "step_outputs": program_result.step_outputs,
+            "variables": program_result.variables,
+        }
+        trace_events.append(
+            {
+                "node": "tool_executor",
+                "title": "执行 AgentProgram",
+            }
+        )
+        reasoning_trace.extend(program_result.reasoning_trace)
+        context = assemble_agent_context(
+            user_message=state["user_message"],
+            project_id=state["project_id"],
+            risk_assessment_id=state["risk_assessment_id"],
+            memory=state.get("memory", {}),
+            evidence_bundle=evidence_bundle,
+            available_tools=tool_registry.names(),
+            page_context=state.get("page_context"),
+            tool_results=tool_results,
+        )
+        return {
+            **state,
+            "agent_context": context,
+            "evidence_bundle": evidence_bundle,
+            "evidence_refs": evidence_refs,
+            "tool_calls": tool_calls,
+            "tool_results": tool_results,
+            "current_node": "llm_tool_executor",
+            "trace_events": trace_events,
+            "reasoning_trace": reasoning_trace,
+        }
+
+    if not tool_names:
+        return state
 
     for tool_name in tool_names:
-        if tool_name == "action_suggestion.create":
-            continue
         tool_input = tool_input_for(tool_name, state)
+        block_reason = tool_policy_block_reason(
+            tool_name,
+            available_tool_names,
+            capability_registry,
+        )
+        if block_reason is not None:
+            tool_call = {
+                "name": tool_name,
+                "status": "blocked",
+                "input": tool_input,
+                "error": block_reason,
+                "evidence_refs": [],
+            }
+            tool_calls.append(tool_call)
+            title = blocked_tool_title(tool_name, block_reason)
+            trace_events.append(
+                {"node": "tool_executor", "title": title}
+            )
+            reasoning_trace.append(
+                ReasoningTraceStep(
+                    stage="tool_call",
+                    title=title,
+                    summary=blocked_tool_summary(block_reason),
+                    evidence_refs=[],
+                    tool_call=tool_call,
+                )
+            )
+            continue
         tool_result = tool_registry.run(tool_name, tool_input)
         if tool_result.evidence_bundle is not None:
             evidence_bundle = tool_result.evidence_bundle
@@ -286,6 +369,7 @@ def llm_tool_executor(state: AgentState) -> AgentState:
         memory=state.get("memory", {}),
         evidence_bundle=evidence_bundle,
         available_tools=tool_registry.names(),
+        page_context=state.get("page_context"),
         tool_results=tool_results,
     )
     return {
@@ -439,6 +523,33 @@ def tool_title(tool_name: str) -> str:
     return labels.get(tool_name, f"调用工具 {tool_name}")
 
 
+def tool_policy_block_reason(
+    tool_name: str,
+    available_tool_names: set[str],
+    capability_registry: CapabilityRegistry,
+) -> str | None:
+    if tool_name not in available_tool_names:
+        return "unknown_tool"
+    if tool_name not in capability_registry.names():
+        return None
+    capability = capability_registry.get(tool_name)
+    if capability.requires_approval:
+        return "approval_required"
+    return None
+
+
+def blocked_tool_title(tool_name: str, block_reason: str) -> str:
+    if block_reason == "approval_required":
+        return f"阻断需审批工具 {tool_name}"
+    return f"阻断未注册工具 {tool_name}"
+
+
+def blocked_tool_summary(block_reason: str) -> str:
+    if block_reason == "approval_required":
+        return "工具需要用户审批边界，不能由 LLM 计划直接执行，已阻断。"
+    return "工具未在当前 Agent 工具注册表中声明，已阻断执行。"
+
+
 def unique_values(values: list[str]) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
@@ -448,3 +559,17 @@ def unique_values(values: list[str]) -> list[str]:
         seen.add(value)
         unique.append(value)
     return unique
+
+
+def describe_page_context_for_trace(page_context) -> str:
+    if page_context is None:
+        return ""
+    parts: list[str] = []
+    if page_context.route:
+        parts.append(f"当前页面：{page_context.route}")
+    if page_context.selected_resource is not None:
+        resource = page_context.selected_resource
+        parts.append(f"选中资源：{resource.type} {resource.name}")
+    if not parts:
+        return ""
+    return "；".join(parts) + "。"

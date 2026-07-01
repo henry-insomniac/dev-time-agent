@@ -15,16 +15,20 @@ class FakeConversationLLM:
         plan: AgentPlan,
         draft: AgentDraftResponse,
         verification: ResponseVerification,
+        expected_page_context: dict | None = None,
     ) -> None:
         self.expected_user_message = expected_user_message
         self.plan = plan
         self.draft = draft
         self.verification = verification
+        self.expected_page_context = expected_page_context
 
     def plan_turn(self, context: dict) -> AgentPlan:
         assert context["user_message"] == self.expected_user_message
         assert "风险解释" in context["capabilities"]
         assert "不能编造证据" in context["boundaries"]
+        if self.expected_page_context is not None:
+            assert context["page_context"] == self.expected_page_context
         return self.plan
 
     def generate_response(

@@ -35,7 +35,7 @@ from dev_time_agent.memory import (
     SessionMemoryStore,
     build_session_memory_store_from_env,
 )
-from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle
+from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle, PageContext
 from dev_time_agent.tools import ToolRegistry, build_tool_registry_from_env
 
 _SESSION_MEMORY_STORE: SessionMemoryStore = build_session_memory_store_from_env()
@@ -89,6 +89,7 @@ def run_agent_session_turn(
     risk_assessment_id: str,
     message: str,
     evidence_bundle: EvidenceBundle | None,
+    page_context: PageContext | None = None,
 ) -> AgentSessionTurnResponse:
     graph = build_agent_graph()
     state = graph.invoke(
@@ -99,6 +100,7 @@ def run_agent_session_turn(
             "risk_assessment_id": risk_assessment_id,
             "user_message": message,
             "evidence_bundle": evidence_bundle,
+            "page_context": page_context,
             "memory": _SESSION_MEMORY_STORE.get(session_id),
             "trace_events": [],
             "reasoning_trace": [],

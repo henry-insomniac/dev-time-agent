@@ -4,6 +4,7 @@ from dev_time_agent.schemas import (
     AgentDraftResponse,
     AgentPlan,
     EvidenceBundle,
+    PageContext,
     ReasoningTraceStep,
     ResponseVerification,
 )
@@ -44,6 +45,7 @@ class AgentState(TypedDict, total=False):
     evidence_bundle: EvidenceBundle | None
     evidence_refs: list[str]
     memory: dict[str, Any]
+    page_context: PageContext | None
     agent_context: dict[str, Any]
     agent_plan: AgentPlan
     draft_response: AgentDraftResponse

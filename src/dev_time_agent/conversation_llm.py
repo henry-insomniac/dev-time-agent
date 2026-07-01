@@ -29,6 +29,28 @@ class OpenAICompatibleConversationLLM:
                     "needs_evidence": "是否需要读取风险证据",
                     "needs_tools": "是否需要调用工具",
                     "tool_names": ["仅允许上下文 available_tools 中的工具名"],
+                    "program": {
+                        "version": "agent_program.v1",
+                        "goal": "多步骤工具目标；不需要多步骤时为 null",
+                        "steps": [
+                            {
+                                "id": "小写下划线步骤 id",
+                                "kind": "tool | select",
+                                "tool": "tool 步骤使用，必须来自 available_tools",
+                                "arguments": {
+                                    "参数名": "字面量，或 {'$var': 'selector_output_key'}"
+                                },
+                                "from_step": "select 步骤读取的前置步骤 id",
+                                "selector": "$.path[0].field",
+                                "output_key": "select 输出变量名",
+                            }
+                        ],
+                        "answer_contract": {
+                            "format": "text",
+                            "required_sections": ["summary", "evidence"],
+                            "must_cite_evidence": True,
+                        },
+                    },
                     "answer_strategy": "一句话说明回答策略",
                     "reasoning_summary": "只输出简短判断摘要，不输出推理链",
                     "safety_notes": ["证据、权限、答非所问等风险"],
