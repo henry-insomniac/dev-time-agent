@@ -699,6 +699,15 @@ def test_agent_session_turn_lists_repository_issues_through_fallback_tools() -> 
     assert body["current_node"] == "github_issue_reporter"
     assert "Issue #42" in body["agent_response"]
     assert "Add issue reader" in body["agent_response"]
+    assert body["agent_response"].startswith(
+        "**henry-insomniac/dev-time-agent** · 1 条 Issue\n\n"
+    )
+    assert (
+        "1. [**Issue #42** · Add issue reader]"
+        "(<https://github.test/henry-insomniac/dev-time-agent/issues/42>)  \n"
+        "   `open`"
+    ) in body["agent_response"]
+    assert "；" not in body["agent_response"]
     assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
         "github.repos.list",
         "github.issues.list",

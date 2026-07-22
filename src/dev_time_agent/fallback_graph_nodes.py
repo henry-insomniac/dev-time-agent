@@ -8,6 +8,12 @@ from dev_time_agent.entity_resolver import (
     resolve_repository,
 )
 from dev_time_agent.graph_state import AgentState
+from dev_time_agent.github_markdown import (
+    format_check_list,
+    format_issue_list,
+    format_pull_request_list,
+    format_repository_list,
+)
 from dev_time_agent.tools import ToolRegistry
 
 
@@ -362,9 +368,7 @@ def github_repository_reporter(state: AgentState) -> AgentState:
     if not repository_names:
         response = "当前 GitHub 已授权，但没有可用于 Dev Time 分析的仓库。"
     else:
-        response = "我当前能看到你授权给 Dev Time 的 GitHub 项目：" + "、".join(
-            repository_names
-        )
+        response = format_repository_list(repository_names)
     return {
         **state,
         "domain": "github",
@@ -443,9 +447,7 @@ def github_pull_request_reporter(state: AgentState) -> AgentState:
     if not pull_requests:
         response = f"{repository_name} 当前没有已记录的 PR。"
     else:
-        response = f"{repository_name} 当前已记录的 PR：" + "；".join(
-            format_pull_request(pr) for pr in pull_requests
-        )
+        response = format_pull_request_list(str(repository_name), pull_requests)
     return {
         **state,
         "domain": "github",
@@ -524,9 +526,7 @@ def github_issue_reporter(state: AgentState) -> AgentState:
     if not issues:
         response = f"{repository_name} 当前没有已记录的 Issue。"
     else:
-        response = f"{repository_name} 当前已记录的 Issue：" + "；".join(
-            format_issue(issue) for issue in issues
-        )
+        response = format_issue_list(str(repository_name), issues)
     return {
         **state,
         "domain": "github",
@@ -604,9 +604,7 @@ def github_check_reporter(state: AgentState) -> AgentState:
     if not checks:
         response = f"{repository_name} 当前没有已记录的 CI/Checks。"
     else:
-        response = f"{repository_name} 当前已记录的 CI/Checks：" + "；".join(
-            format_check_run(check) for check in checks
-        )
+        response = format_check_list(str(repository_name), checks)
     return {
         **state,
         "domain": "github",
@@ -1051,24 +1049,3 @@ def first_log_location(log_excerpt: str) -> str:
     if match is None:
         return ""
     return f"{match.group(1)} 第 {match.group(2)} 行"
-
-
-def format_pull_request(pull_request: dict) -> str:
-    number = pull_request.get("number", "?")
-    title = pull_request.get("title") or "Untitled"
-    state = pull_request.get("state") or "unknown"
-    return f"PR #{number} {title}（{state}）"
-
-
-def format_issue(issue: dict) -> str:
-    number = issue.get("number", "?")
-    title = issue.get("title") or "Untitled"
-    state = issue.get("state") or "unknown"
-    return f"Issue #{number} {title}（{state}）"
-
-
-def format_check_run(check: dict) -> str:
-    name = check.get("name") or "unknown"
-    status = check.get("status") or "unknown"
-    conclusion = check.get("conclusion") or "pending"
-    return f"{name} {status}（{conclusion}）"
