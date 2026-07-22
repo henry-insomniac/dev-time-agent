@@ -147,6 +147,52 @@ def test_agent_session_turn_blocks_off_topic_llm_response() -> None:
     ]
 
 
+def test_agent_session_turn_contains_model_dependency_failure() -> None:
+    from dev_time_agent.conversation_llm import OpenAICompatibleConversationLLM
+    from dev_time_agent.schemas import LLMProviderConfig
+
+    configure_conversation_llm_for_tests(
+        OpenAICompatibleConversationLLM(
+            LLMProviderConfig(
+                provider="openai-compatible",
+                base_url="http://127.0.0.1:1/v1",
+                model="unreachable-model",
+                api_key="test-key",
+            )
+        )
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post(
+        "/agent/sessions/session_project_repo_1002/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1002",
+            "project_id": "project_repo_1002",
+            "risk_assessment_id": "risk_project_repo_1002",
+            "message": "帮我总结这个项目最近的交付情况",
+            "trusted_context": {
+                "workspace_id": "workspace_github_1001",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "repository": {
+                    "id": "repo_1002",
+                    "project_id": "project_repo_1002",
+                    "name": "dev-time-agent",
+                    "full_name": "henry-insomniac/dev-time-agent",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "runtime_dependency_unavailable"
+    assert body["current_node"] == "dependency_failure_responder"
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+    assert "暂时不可用" in body["agent_response"]
+    assert body["evidence_refs"] == []
+    assert body["tool_calls"] == []
+
+
 def test_agent_session_turn_executes_planned_read_tool_before_generating_response() -> None:
     with fake_dev_time_server() as base_url:
         configure_tool_registry_for_tests(

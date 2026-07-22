@@ -72,3 +72,6 @@
 - PR 诊断不得选择 repo-wide first failed check；必须绑定 Risk Episode check run。
 - 配置 Runtime 时禁止 Server pre-router、direct LLM bypass 和 silent fallback。
 - 新增 Agent bad case 时必须补可执行公共接口 eval，而不只是 fixture metadata。
+- 确定性会话路径必须先经过 Deterministic Conversation Control Plane，且不得加载 Workspace 模型 Adapter。
+- 模型和工具外部依赖故障必须在 Runtime Interface 转换为明确的 Grounded Turn；不得返回 5xx 或生成无证据结论。
+- 意图变体优先使用可组合语义谓词；禁止用不断增长的完整句子白名单修补公开接口回归。

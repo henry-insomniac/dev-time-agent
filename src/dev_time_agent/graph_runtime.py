@@ -1,6 +1,12 @@
+import logging
+
 from langgraph.graph import END, START, StateGraph
 
 from dev_time_agent.conversation_llm import build_conversation_llm_from_env
+from dev_time_agent.dependency_failure import (
+    build_dependency_failure_response,
+    is_dependency_failure,
+)
 from dev_time_agent.fallback_graph_nodes import (
     clarify_responder,
     configure_fallback_graph_node_dependencies,
@@ -24,13 +30,16 @@ from dev_time_agent.fallback_graph_nodes import (
 from dev_time_agent.graph_state import AgentState, ConversationLLM
 from dev_time_agent.llm_graph_nodes import (
     configure_llm_graph_node_dependencies,
+    conversation_control_plane,
     context_assembler,
     llm_planner,
     llm_tool_executor,
+    model_resolver,
     response_generator,
     response_verifier,
-    route_after_context_assembler,
+    route_after_conversation_control_plane,
     route_after_llm_planner,
+    route_after_model_resolver,
 )
 from dev_time_agent.memory import (
     SessionMemoryStore,
@@ -47,6 +56,7 @@ from dev_time_agent.tools import ToolRegistry, build_tool_registry_from_env
 _SESSION_MEMORY_STORE: SessionMemoryStore = build_session_memory_store_from_env()
 _TOOL_REGISTRY: ToolRegistry | None = build_tool_registry_from_env()
 _CONVERSATION_LLM: "ConversationLLM | None" = None
+_LOGGER = logging.getLogger(__name__)
 
 
 def reset_session_memory_for_tests() -> None:
@@ -102,16 +112,27 @@ class RiskEpisodeConversationRuntime:
         page_context: PageContext | None = None,
         trusted_context: TrustedRiskContext | None = None,
     ) -> AgentSessionTurnResponse:
-        return _run_agent_session_turn_impl(
-            session_id=session_id,
-            conversation_id=conversation_id,
-            project_id=project_id,
-            risk_assessment_id=risk_assessment_id,
-            message=message,
-            evidence_bundle=evidence_bundle,
-            page_context=page_context,
-            trusted_context=trusted_context,
-        )
+        try:
+            return _run_agent_session_turn_impl(
+                session_id=session_id,
+                conversation_id=conversation_id,
+                project_id=project_id,
+                risk_assessment_id=risk_assessment_id,
+                message=message,
+                evidence_bundle=evidence_bundle,
+                page_context=page_context,
+                trusted_context=trusted_context,
+            )
+        except Exception as error:
+            if not is_dependency_failure(error):
+                raise
+            _LOGGER.exception("agent conversation dependency failed")
+            return build_dependency_failure_response(
+                session_id=session_id,
+                conversation_id=conversation_id,
+                message=message,
+                trusted_context=trusted_context,
+            )
 
 
 _RISK_EPISODE_CONVERSATION_RUNTIME = RiskEpisodeConversationRuntime()
@@ -196,6 +217,8 @@ def _run_agent_session_turn_impl(
 def build_agent_graph():
     graph = StateGraph(AgentState)
     graph.add_node("context_assembler", context_assembler)
+    graph.add_node("conversation_control_plane", conversation_control_plane)
+    graph.add_node("model_resolver", model_resolver)
     graph.add_node("llm_planner", llm_planner)
     graph.add_node("llm_tool_executor", llm_tool_executor)
     graph.add_node("response_generator", response_generator)
@@ -217,9 +240,18 @@ def build_agent_graph():
     graph.add_node("planner", planner)
 
     graph.add_edge(START, "context_assembler")
+    graph.add_edge("context_assembler", "conversation_control_plane")
     graph.add_conditional_edges(
-        "context_assembler",
-        route_after_context_assembler,
+        "conversation_control_plane",
+        route_after_conversation_control_plane,
+        {
+            "intent_router": "intent_router",
+            "model_resolver": "model_resolver",
+        },
+    )
+    graph.add_conditional_edges(
+        "model_resolver",
+        route_after_model_resolver,
         {
             "llm_planner": "llm_planner",
             "intent_router": "intent_router",

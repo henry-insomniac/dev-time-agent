@@ -212,6 +212,10 @@ _Avoid_: 枚举全部仓库后猜项目、使用 PageContext 授权、跨 Worksp
 围绕单个 Delivery Risk 运行的深模块，消费 Trusted Risk Context 并产出 Grounded Turn。PR 诊断直接读取 Risk Episode 绑定的 check run；当前项目和 Agent 身份采用确定性路径。
 _Avoid_: one-shot prompt 猜测、仓库第一个失败检查、服务端预路由、通用聊天
 
+**Deterministic Conversation Control Plane**:
+Risk Episode Conversation Runtime 内先于模型 Adapter 运行的路由 Module。它只依据用户消息类型和 Trusted Risk Context 选择直接回答或模型路径；当前项目、问候和有可信仓库的 GitHub 读取不得加载模型。模型或数据依赖失败时，Runtime 必须返回明确的 Grounded Turn，不得让会话接口 5xx，也不得伪造结论。
+_Avoid_: context assembly 时急切加载模型、用固定整句白名单冒充语义识别、外部依赖异常穿透会话 Interface
+
 **Grounded Turn**:
 包含 Markdown 回答、intent、可信实体、工具调用、证据引用和 Runtime 模型身份的一轮输出。自我介绍中的 provider/model 来自该轮实际加载的 adapter 配置。
 _Avoid_: 模型自行声称型号、证据引用被草稿覆盖、工具调用与回答对象不一致

@@ -338,3 +338,14 @@ dev-time-agent/
 - 配置 Runtime 后，Server 不再预路由 GitHub 问题，也不再直连 LLM 或静默回退。
 
 这条 Seam 的 Leverage 是让 GitHub、风险解释和未来执行动作共享同一 provenance contract，而不是继续扩展分类器与 prompt 分支。
+
+## Deterministic Conversation Control Plane
+
+`conversation_control_plane.decide_conversation_execution()` 是 Runtime 内部的单一 Interface。它在 `context_assembler` 之后、模型 Adapter Seam 之前选择执行路径：
+
+- 当前项目、问候及已绑定 Trusted Risk Context 的 GitHub 对象读取直接进入 deterministic graph。
+- 自我介绍先解析 Workspace 模型元数据，再由 deterministic responder 展示本轮实际 provider/model。
+- 其余开放问题才延迟解析模型，并进入 planner/generator/verifier。
+- 模型配置、模型调用或工具数据依赖不可用时，由 `RiskEpisodeConversationRuntime` 收敛为 `runtime_dependency_unavailable` Grounded Turn；不编造风险结论、不执行写操作、不把依赖异常暴露为 5xx。
+
+这个 Module 把路由知识集中在一个 Seam，提升 Locality；调用者只需提交一轮会话，获得的 Leverage 是确定性快速路径、按需模型加载与统一故障隔离。

@@ -83,7 +83,7 @@
   },
   {
     "id": "trusted_context_current_project",
-    "user_message": "当前项目是什么？",
+    "user_message": "当前的项目是什么",
     "expected_intent": "current_context",
     "executable_runtime": true,
     "trusted_context": {

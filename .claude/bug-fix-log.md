@@ -180,3 +180,29 @@ Runtime 在确定性意图路由前急切加载模型，却没有把配置 404 �
 ### 验证
 
 新增同生产 payload 结构的回归测试，使用 Workspace-scoped 模型配置 404，断言自我介绍返回 200 和 deterministic identity。
+
+## 2026-07-22 - 当前项目查询被模型依赖拖成 5xx
+
+### 现象
+
+生产请求“当前的项目是什么”同时在 `/turns` 与 `/turns/stream` 报错。此前补充“当前项目是什么”的整句匹配后仍可被一个虚词变体绕过。
+
+### 影响
+
+用户已经提供 Trusted Risk Context，Runtime 本可直接回答当前仓库，却仍依赖模型配置与模型网络；任一依赖异常都会让普通与流式会话共同失败。
+
+### 原因
+
+`context_assembler` 在意图路由前急切解析 Workspace 模型，模型 Adapter Seam 位于确定性控制之前；当前项目识别又使用完整句子白名单。两个 HTTP 入口共享同一 Runtime 调用链，因此同时暴露同一缺陷。
+
+### 修复
+
+新增 Deterministic Conversation Control Plane Module，以组合语义谓词识别当前项目身份问题，并在模型 Adapter 之前选择 direct/model 路径。模型解析移动到独立的 lazy `model_resolver`。`RiskEpisodeConversationRuntime` 统一将外部网络、HTTP、超时与上游 payload/schema 故障转换为 `runtime_dependency_unavailable` Markdown Grounded Turn，不再返回 5xx 或伪造风险结论。
+
+### 验证
+
+- 精确生产句式的公开 Runtime 回归与 executable eval。
+- 强制模型配置解析抛错，断言当前项目请求仍为 200 且模型解析次数为 0。
+- 强制模型端口不可达，断言返回结构化降级响应而非 500。
+- Server 普通 JSON 与 SSE 两入口均以相同原句返回 `current_context`。
+- `uv run pytest -q && uv run ruff check .`。

@@ -767,7 +767,7 @@ def test_risk_scoped_conversation_identifies_current_project_without_llm_guessin
             "conversation_id": "conversation_project_repo_1002",
             "project_id": "project_repo_1002",
             "risk_assessment_id": "risk_project_repo_1002",
-            "message": "当前项目是什么？",
+            "message": "当前的项目是什么",
             "trusted_context": {
                 "workspace_id": "workspace_github_1001",
                 "risk_assessment_id": "risk_project_repo_1002",
@@ -787,6 +787,48 @@ def test_risk_scoped_conversation_identifies_current_project_without_llm_guessin
     assert body["entities"]["repository"]["id"] == "repo_1002"
     assert "henry-insomniac/dev-time-agent" in body["agent_response"]
     assert body["tool_calls"] == []
+
+
+def test_current_project_question_does_not_resolve_model_dependency(monkeypatch) -> None:
+    from dev_time_agent import graph_runtime
+
+    model_resolution_calls = 0
+
+    def fail_if_model_is_resolved(*, workspace_id: str | None = None):
+        nonlocal model_resolution_calls
+        model_resolution_calls += 1
+        raise OSError(f"model dependency should not be resolved for {workspace_id}")
+
+    monkeypatch.setattr(
+        graph_runtime,
+        "build_conversation_llm_from_env",
+        fail_if_model_is_resolved,
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/agent/sessions/session_project_repo_1002/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1002",
+            "project_id": "project_repo_1002",
+            "risk_assessment_id": "risk_project_repo_1002",
+            "message": "当前的项目是什么",
+            "trusted_context": {
+                "workspace_id": "workspace_github_1001",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "repository": {
+                    "id": "repo_1002",
+                    "project_id": "project_repo_1002",
+                    "name": "dev-time-agent",
+                    "full_name": "henry-insomniac/dev-time-agent",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intent"] == "current_context"
+    assert model_resolution_calls == 0
 
 
 def test_agent_intro_reports_the_effective_runtime_model() -> None:

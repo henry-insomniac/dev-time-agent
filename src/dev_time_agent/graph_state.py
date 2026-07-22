@@ -49,6 +49,8 @@ class AgentState(TypedDict, total=False):
     page_context: PageContext | None
     trusted_context: TrustedRiskContext | None
     active_model: dict[str, str]
+    control_plane_intent: str
+    execution_path: str
     runtime_llm: ConversationLLM | None
     agent_context: dict[str, Any]
     agent_plan: AgentPlan

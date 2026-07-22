@@ -8,7 +8,7 @@ from dev_time_agent.capability_registry import (
     build_default_capability_registry,
 )
 from dev_time_agent.context import assemble_agent_context
-from dev_time_agent.conversation import classify_intent
+from dev_time_agent.conversation_control_plane import decide_conversation_execution
 from dev_time_agent.graph_state import AgentState, ConversationLLM
 from dev_time_agent.schemas import ReasoningTraceStep
 from dev_time_agent.tools import ToolRegistry
@@ -39,7 +39,6 @@ def configure_llm_graph_node_dependencies(
 
 def context_assembler(state: AgentState) -> AgentState:
     tool_registry = _tool_registry_provider()
-    conversation_llm = _conversation_llm_provider(state)
     available_tools = tool_registry.names() if tool_registry else []
     evidence_summary = "当前请求未携带风险证据。"
     if state.get("evidence_bundle") is not None:
@@ -50,8 +49,8 @@ def context_assembler(state: AgentState) -> AgentState:
         context_summary = f"{evidence_summary} {page_context_summary}"
     return {
         **state,
-        "active_model": effective_model_identity(conversation_llm),
-        "runtime_llm": conversation_llm,
+        "active_model": {"provider": "deterministic", "model": "rules-v1"},
+        "runtime_llm": None,
         "agent_context": assemble_agent_context(
             user_message=state["user_message"],
             project_id=state["project_id"],
@@ -79,20 +78,35 @@ def context_assembler(state: AgentState) -> AgentState:
     }
 
 
-def route_after_context_assembler(state: AgentState) -> str:
-    classified_intent = classify_intent(state["user_message"]).intent
-    if classified_intent in {
-        "current_context",
-        "self_intro",
-    }:
+def conversation_control_plane(state: AgentState) -> AgentState:
+    decision = decide_conversation_execution(
+        state["user_message"],
+        has_trusted_context=state.get("trusted_context") is not None,
+    )
+    return {
+        **state,
+        "control_plane_intent": decision.intent,
+        "execution_path": decision.execution_path.value,
+    }
+
+
+def route_after_conversation_control_plane(state: AgentState) -> str:
+    if state.get("execution_path") == "direct":
         return "intent_router"
-    trusted_context = state.get("trusted_context")
-    if trusted_context is not None and classified_intent in {
-        "github_issues_list",
-        "github_pull_requests_list",
-        "github_checks_list",
-        "github_pr_ci_diagnosis",
-    }:
+    return "model_resolver"
+
+
+def model_resolver(state: AgentState) -> AgentState:
+    conversation_llm = _conversation_llm_provider(state)
+    return {
+        **state,
+        "active_model": effective_model_identity(conversation_llm),
+        "runtime_llm": conversation_llm,
+    }
+
+
+def route_after_model_resolver(state: AgentState) -> str:
+    if state.get("control_plane_intent") == "self_intro":
         return "intent_router"
     if state.get("runtime_llm") is None:
         return "intent_router"

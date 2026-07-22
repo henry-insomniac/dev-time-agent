@@ -347,3 +347,8 @@ action_suggestion.create
 `current_context`、`self_intro` 以及带 Trusted Risk Context 的 Issue/PR/Checks 查询在 LLM planner 之前路由。这些意图的答案由可信上下文或工具结果唯一决定，模型没有额外判断价值。
 
 PR CI 诊断只有在消息 PR 编号与 Risk Episode 的 `pull_request` 一致时才读取 `check_run_id`；不一致时必须澄清。无 Risk Episode 的旧路径仅作为未配置 Runtime 的兼容 Adapter。
+# 2026-07-22 Deterministic Conversation Control Plane
+
+意图识别不再等同于“调用模型”。Runtime 先通过 `decide_conversation_execution(message, has_trusted_context)` 决定执行路径，再按需跨越模型 Adapter Seam。当前项目身份采用组合语义谓词（上下文锚点 + 项目主体 + 身份问法），而不是完整句子白名单，因此“当前项目是什么”“当前的项目是什么”“这个仓库叫什么”等表达共享同一规则。状态、风险、进度类问题显式排除，避免被身份问题吞掉。
+
+控制平面只负责选择 direct/model，不生成业务答案；事实回答仍由 responder 和 Trusted Risk Context 负责。这样保持路由、事实与文案的 Locality，并允许模型不可用时继续回答确定性问题。

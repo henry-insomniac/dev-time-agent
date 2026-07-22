@@ -208,3 +208,7 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 # 2026-07 Runtime deepening
 
 `RiskEpisodeConversationRuntime` 是新的深 Module：公共 Interface 只接收会话消息和 `TrustedRiskContext`，内部隐藏确定性路由、workspace model Adapter、GitHub capability execution 与 Grounded Turn 验证。Server 与 Runtime 之间的 Seam 由 Pydantic/JSON schema 固定；不再让 PageContext、server classifier 和 LLM planner 三处重复决定同一仓库。
+
+## Conversation Runtime failure isolation
+
+会话调用链为 `context_assembler -> conversation_control_plane -> (intent_router | model_resolver)`。`model_resolver` 是 Workspace 模型 Adapter 的唯一按需入口；确定性路径不得跨越该 Seam。`RiskEpisodeConversationRuntime.run()` 是外部依赖错误的收敛 Interface：网络、上游 HTTP、超时、JSON 或上游 schema 错误转换为结构化 `runtime_dependency_unavailable`，而非 FastAPI 500。

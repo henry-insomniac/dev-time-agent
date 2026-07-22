@@ -89,16 +89,7 @@ def classify_intent(message: str) -> IntentClassification:
             confidence=1,
             requires_evidence=False,
         )
-    if any(
-        keyword in normalized
-        for keyword in {
-            "当前项目是什么",
-            "现在的项目是什么",
-            "这是哪个项目",
-            "当前仓库是什么",
-            "这是哪个仓库",
-        }
-    ):
+    if is_current_context_question(normalized):
         return IntentClassification(
             intent="current_context",
             confidence=1,
@@ -201,6 +192,27 @@ def classify_intent(message: str) -> IntentClassification:
         requires_evidence=False,
         clarifying_question="你想让我评估当前风险、解释证据，还是生成下一步行动计划？",
     )
+
+
+def is_current_context_question(normalized_message: str) -> bool:
+    if any(
+        keyword in normalized_message
+        for keyword in {"状态", "风险", "进度", "怎么样", "健康"}
+    ):
+        return False
+    has_context_anchor = any(
+        keyword in normalized_message
+        for keyword in {"当前", "现在", "这个", "本项目", "本仓库", "这里"}
+    )
+    has_project_subject = any(
+        keyword in normalized_message
+        for keyword in {"项目", "仓库", "repository", "repo"}
+    )
+    asks_identity = any(
+        keyword in normalized_message
+        for keyword in {"是什么", "是哪个", "是哪一个", "叫什么", "哪个项目", "哪个仓库"}
+    )
+    return has_context_anchor and has_project_subject and asks_identity
 
 
 def evidence_refs_from_bundle(bundle: EvidenceBundle) -> list[str]:
