@@ -8,12 +8,13 @@ from dev_time_agent.capability_registry import (
     build_default_capability_registry,
 )
 from dev_time_agent.context import assemble_agent_context
+from dev_time_agent.conversation import classify_intent
 from dev_time_agent.graph_state import AgentState, ConversationLLM
 from dev_time_agent.schemas import ReasoningTraceStep
 from dev_time_agent.tools import ToolRegistry
 
 
-def _no_conversation_llm() -> ConversationLLM | None:
+def _no_conversation_llm(_state: AgentState) -> ConversationLLM | None:
     return None
 
 
@@ -21,13 +22,14 @@ def _no_tool_registry() -> ToolRegistry | None:
     return None
 
 
-_conversation_llm_provider: Callable[[], ConversationLLM | None] = _no_conversation_llm
+_conversation_llm_provider: Callable[[AgentState], ConversationLLM | None]
+_conversation_llm_provider = _no_conversation_llm
 _tool_registry_provider: Callable[[], ToolRegistry | None] = _no_tool_registry
 
 
 def configure_llm_graph_node_dependencies(
     *,
-    conversation_llm_provider: Callable[[], ConversationLLM | None],
+    conversation_llm_provider: Callable[[AgentState], ConversationLLM | None],
     tool_registry_provider: Callable[[], ToolRegistry | None],
 ) -> None:
     global _conversation_llm_provider, _tool_registry_provider
@@ -37,6 +39,7 @@ def configure_llm_graph_node_dependencies(
 
 def context_assembler(state: AgentState) -> AgentState:
     tool_registry = _tool_registry_provider()
+    conversation_llm = _conversation_llm_provider(state)
     available_tools = tool_registry.names() if tool_registry else []
     evidence_summary = "当前请求未携带风险证据。"
     if state.get("evidence_bundle") is not None:
@@ -47,6 +50,8 @@ def context_assembler(state: AgentState) -> AgentState:
         context_summary = f"{evidence_summary} {page_context_summary}"
     return {
         **state,
+        "active_model": effective_model_identity(conversation_llm),
+        "runtime_llm": conversation_llm,
         "agent_context": assemble_agent_context(
             user_message=state["user_message"],
             project_id=state["project_id"],
@@ -55,6 +60,7 @@ def context_assembler(state: AgentState) -> AgentState:
             evidence_bundle=state.get("evidence_bundle"),
             available_tools=available_tools,
             page_context=state.get("page_context"),
+            trusted_context=state.get("trusted_context"),
             tool_results=state.get("tool_results", {}),
         ),
         "current_node": "context_assembler",
@@ -74,13 +80,36 @@ def context_assembler(state: AgentState) -> AgentState:
 
 
 def route_after_context_assembler(state: AgentState) -> str:
-    if _conversation_llm_provider() is None:
+    classified_intent = classify_intent(state["user_message"]).intent
+    if classified_intent in {
+        "current_context",
+        "self_intro",
+    }:
+        return "intent_router"
+    trusted_context = state.get("trusted_context")
+    if trusted_context is not None and classified_intent in {
+        "github_issues_list",
+        "github_pull_requests_list",
+        "github_checks_list",
+        "github_pr_ci_diagnosis",
+    }:
+        return "intent_router"
+    if state.get("runtime_llm") is None:
         return "intent_router"
     return "llm_planner"
 
 
+def effective_model_identity(conversation_llm: ConversationLLM | None) -> dict[str, str]:
+    config = getattr(conversation_llm, "config", None)
+    provider = str(getattr(config, "provider", "")).strip()
+    model = str(getattr(config, "model", "")).strip()
+    if provider and model:
+        return {"provider": provider, "model": model}
+    return {"provider": "deterministic", "model": "rules-v1"}
+
+
 def llm_planner(state: AgentState) -> AgentState:
-    conversation_llm = _conversation_llm_provider()
+    conversation_llm = state.get("runtime_llm")
     if conversation_llm is None:
         raise RuntimeError("conversation llm is not configured")
     plan = conversation_llm.plan_turn(state["agent_context"])
@@ -291,6 +320,7 @@ def llm_tool_executor(state: AgentState) -> AgentState:
             evidence_bundle=evidence_bundle,
             available_tools=tool_registry.names(),
             page_context=state.get("page_context"),
+            trusted_context=state.get("trusted_context"),
             tool_results=tool_results,
         )
         return {
@@ -370,6 +400,7 @@ def llm_tool_executor(state: AgentState) -> AgentState:
         evidence_bundle=evidence_bundle,
         available_tools=tool_registry.names(),
         page_context=state.get("page_context"),
+        trusted_context=state.get("trusted_context"),
         tool_results=tool_results,
     )
     return {
@@ -386,7 +417,7 @@ def llm_tool_executor(state: AgentState) -> AgentState:
 
 
 def response_generator(state: AgentState) -> AgentState:
-    conversation_llm = _conversation_llm_provider()
+    conversation_llm = state.get("runtime_llm")
     if conversation_llm is None:
         raise RuntimeError("conversation llm is not configured")
     draft = conversation_llm.generate_response(
@@ -417,7 +448,7 @@ def response_generator(state: AgentState) -> AgentState:
 
 
 def response_verifier(state: AgentState) -> AgentState:
-    conversation_llm = _conversation_llm_provider()
+    conversation_llm = state.get("runtime_llm")
     if conversation_llm is None:
         raise RuntimeError("conversation llm is not configured")
     verification = conversation_llm.verify_response(

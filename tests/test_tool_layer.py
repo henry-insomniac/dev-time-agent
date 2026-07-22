@@ -706,6 +706,123 @@ def test_agent_session_turn_lists_repository_issues_through_fallback_tools() -> 
     assert "评估当前风险" not in body["agent_response"]
 
 
+def test_risk_scoped_conversation_uses_trusted_repository_for_current_project_issues() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1002/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1002",
+                "project_id": "project_repo_1002",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "message": "查看项目的 issue",
+                "trusted_context": {
+                    "workspace_id": "workspace_github_1001",
+                    "risk_assessment_id": "risk_project_repo_1002",
+                    "repository": {
+                        "id": "repo_1002",
+                        "project_id": "project_repo_1002",
+                        "name": "dev-time-agent",
+                        "full_name": "henry-insomniac/dev-time-agent",
+                    },
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_issues_list"
+    assert body["entities"]["repository"]["id"] == "repo_1002"
+    assert "Issue #42" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.issues.list"
+    ]
+
+
+def test_risk_scoped_conversation_identifies_current_project_without_llm_guessing() -> None:
+    from dev_time_agent.conversation_llm import OpenAICompatibleConversationLLM
+    from dev_time_agent.schemas import LLMProviderConfig
+
+    configure_conversation_llm_for_tests(
+        OpenAICompatibleConversationLLM(
+            LLMProviderConfig(
+                provider="openai-compatible",
+                base_url="http://127.0.0.1:1/v1",
+                model="must-not-be-called",
+                api_key="test-key",
+            )
+        )
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/agent/sessions/session_project_repo_1002/turns",
+        json={
+            "conversation_id": "conversation_project_repo_1002",
+            "project_id": "project_repo_1002",
+            "risk_assessment_id": "risk_project_repo_1002",
+            "message": "当前项目是什么？",
+            "trusted_context": {
+                "workspace_id": "workspace_github_1001",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "repository": {
+                    "id": "repo_1002",
+                    "project_id": "project_repo_1002",
+                    "name": "dev-time-agent",
+                    "full_name": "henry-insomniac/dev-time-agent",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "current_context"
+    assert body["entities"]["repository"]["id"] == "repo_1002"
+    assert "henry-insomniac/dev-time-agent" in body["agent_response"]
+    assert body["tool_calls"] == []
+
+
+def test_agent_intro_reports_the_effective_runtime_model() -> None:
+    from dev_time_agent.conversation_llm import OpenAICompatibleConversationLLM
+    from dev_time_agent.schemas import LLMProviderConfig
+
+    configure_conversation_llm_for_tests(
+        OpenAICompatibleConversationLLM(
+            LLMProviderConfig(
+                provider="openai-compatible",
+                base_url="http://127.0.0.1:1/v1",
+                model="qwen3-coder-plus",
+                api_key="test-key",
+            )
+        )
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/agent/sessions/session_intro/turns",
+        json={
+            "conversation_id": "conversation_intro",
+            "project_id": "project_repo_1002",
+            "risk_assessment_id": "risk_project_repo_1002",
+            "message": "介绍你自己，你现在用的什么模型？",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "self_intro"
+    assert "项目风险" in body["agent_response"]
+    assert "openai-compatible" in body["agent_response"]
+    assert "qwen3-coder-plus" in body["agent_response"]
+
+
 def test_agent_session_turn_lists_repository_checks_through_fallback_tools() -> None:
     from fake_agent_llm import fake_dev_time_server as fake_github_server
 
@@ -784,6 +901,62 @@ def test_agent_session_turn_diagnoses_failed_pull_request_ci_logs() -> None:
         "github.checks.logs",
     ]
     assert body["tool_calls"][-1]["input"] == {
+        "repository_id": "repo_1002",
+        "run_id": 812,
+    }
+
+
+def test_risk_scoped_pr_diagnosis_uses_the_episode_check_run_only() -> None:
+    from fake_agent_llm import fake_dev_time_server as fake_github_server
+
+    with fake_github_server(github_connected=True) as base_url:
+        configure_tool_registry_for_tests(
+            build_default_tool_registry(HTTPServerClient(base_url))
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_project_repo_1002/turns",
+            json={
+                "conversation_id": "conversation_project_repo_1002",
+                "project_id": "project_repo_1002",
+                "risk_assessment_id": "risk_project_repo_1002",
+                "message": "帮我看看 #12 PR 为什么红了？",
+                "trusted_context": {
+                    "workspace_id": "workspace_github_1001",
+                    "risk_assessment_id": "risk_project_repo_1002",
+                    "repository": {
+                        "id": "repo_1002",
+                        "project_id": "project_repo_1002",
+                        "name": "dev-time-agent",
+                        "full_name": "henry-insomniac/dev-time-agent",
+                    },
+                    "risk_episode": {
+                        "id": "risk_episode_pr_12",
+                        "risk_type": "ci_blocked",
+                        "status": "open",
+                        "pull_request": 12,
+                        "pull_request_url": "https://github.test/pr/12",
+                        "head_sha": "sha-for-pr-12",
+                        "check_run_id": 812,
+                        "failed_gate": "eslint",
+                        "evidence_url": "https://github.test/actions/runs/812",
+                        "last_verified_at": "2026-07-22T10:00:00Z",
+                    },
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "github_pr_ci_diagnosis"
+    assert body["entities"]["pr_number"] == 12
+    assert body["entities"]["head_sha"] == "sha-for-pr-12"
+    assert "no-unused-vars" in body["agent_response"]
+    assert [tool_call["name"] for tool_call in body["tool_calls"]] == [
+        "github.checks.logs"
+    ]
+    assert body["tool_calls"][0]["input"] == {
         "repository_id": "repo_1002",
         "run_id": 812,
     }

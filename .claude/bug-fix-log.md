@@ -146,3 +146,23 @@ LangGraph runtime 每轮调用只使用当前请求状态，上一轮风险摘�
 
 - 本文件由脚手架初始化，后续应根据项目真实问题持续维护。
 - 如果项目尚未建立自动化测试、格式化或 lint 流程，应在 `tech-stack.md` 中补充验证策略。
+
+## 2026-07-22 - Agent 错项目、错 PR 归因与模型身份不透明
+
+### 现象
+
+“当前项目是什么”被路由为澄清；项目 Issue 查询重新枚举仓库；PR #12 诊断读取仓库第一个失败 check；空 signals/events 被序列化为 null；Agent 介绍不说明实际模型。Server 还会在 Runtime 前抢答 GitHub 问题，并在 Runtime 失败后静默走旧直连 LLM。
+
+### 原因
+
+会话没有 Server 授权的统一事实边界，PageContext、Server classifier、LLM planner 和 fallback reporter 各自解析对象，provenance 无法保持。
+
+### 修复
+
+引入 Trusted Risk Context 和 Risk Episode Conversation Runtime Seam；可信仓库直接驱动 Issue 查询，Risk Episode 的 PR/head/check run 驱动日志诊断；模型按 Workspace 加载并在自我介绍中展示；配置 Runtime 时移除预路由、直连 LLM 与静默回退；空集合稳定输出 `[]`。
+
+### 验证
+
+- 可执行 eval 真实调用 Runtime 公共接口并断言四个核心 bad case。
+- `uv run pytest -q`
+- `uv run ruff check .`

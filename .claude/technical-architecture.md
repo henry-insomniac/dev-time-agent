@@ -137,3 +137,6 @@ Agent 请求必须绑定 Risk Episode，并携带结构化 Risk Brief、PR/head 
 6. Risk-scoped Agent、指标和旧产品入口下线。
 
 任何新功能若不能缩短或更可靠地衡量 Time to Verified Unblock，默认不进入首个 MVP。
+# 2026-07 Agent Runtime boundary
+
+LangGraph state 新增 `trusted_context`、`runtime_llm` 与 `active_model`。模型 Adapter 在 context assembler 中按 Workspace 创建一次并贯穿一轮；确定性 route 在 planner 前处理 identity/current context 与 risk-scoped GitHub reads。`TrustedRiskEpisodeContext.check_run_id` 让 logs capability 直接绑定 canonical observation。

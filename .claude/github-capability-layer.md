@@ -181,3 +181,11 @@ GitHub 能力层不是替代风险层，而是给 Agent 补齐对象读取能力
 如果被追问为什么这样定义是解决问题：
 
 > 之前“查看我的 GitHub 项目”会被当成风险澄清，因为 Agent 没有对象级 GitHub 能力。现在 repo、PR、Issue、Checks 都有明确 intent、工具和 reporter，用户查对象时不会被强行带到风险解释；需要风险分析时又能回到 EvidenceBundle 证据链。这是把“GitHub 事实查询”和“风险推理”拆开，但仍共享同一个 server 事实源。
+# 2026-07 Risk Episode capability binding
+
+Risk-scoped GitHub read capabilities 不再以 `github.repos.list` 作为默认起点：
+
+- Issue/PR/Checks 使用 Trusted Risk Context 中的 repository ID。
+- PR 失败诊断使用 Risk Episode 中的 PR、head SHA 与 check run ID。
+- `github.checks.logs` 的输入必须与 Risk Episode 绑定对象一致。
+- PageContext 和模型输出都不能覆盖这些 tool arguments。

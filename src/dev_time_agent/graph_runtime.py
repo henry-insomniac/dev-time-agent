@@ -5,6 +5,7 @@ from dev_time_agent.fallback_graph_nodes import (
     clarify_responder,
     configure_fallback_graph_node_dependencies,
     context_loader,
+    current_context_responder,
     github_check_reporter,
     github_issue_reporter,
     github_pr_ci_diagnoser,
@@ -35,7 +36,12 @@ from dev_time_agent.memory import (
     SessionMemoryStore,
     build_session_memory_store_from_env,
 )
-from dev_time_agent.schemas import AgentSessionTurnResponse, EvidenceBundle, PageContext
+from dev_time_agent.schemas import (
+    AgentSessionTurnResponse,
+    EvidenceBundle,
+    PageContext,
+    TrustedRiskContext,
+)
 from dev_time_agent.tools import ToolRegistry, build_tool_registry_from_env
 
 _SESSION_MEMORY_STORE: SessionMemoryStore = build_session_memory_store_from_env()
@@ -62,10 +68,12 @@ def configure_conversation_llm_for_tests(llm: ConversationLLM | None) -> None:
     _CONVERSATION_LLM = llm
 
 
-def conversation_llm_for_turn() -> ConversationLLM | None:
+def conversation_llm_for_turn(state: AgentState) -> ConversationLLM | None:
     if _CONVERSATION_LLM is not None:
         return _CONVERSATION_LLM
-    return build_conversation_llm_from_env()
+    trusted_context = state.get("trusted_context")
+    workspace_id = trusted_context.workspace_id if trusted_context is not None else None
+    return build_conversation_llm_from_env(workspace_id=workspace_id)
 
 
 def tool_registry_for_turn() -> ToolRegistry | None:
@@ -81,6 +89,34 @@ configure_fallback_graph_node_dependencies(
 )
 
 
+class RiskEpisodeConversationRuntime:
+    def run(
+        self,
+        *,
+        session_id: str,
+        conversation_id: str,
+        project_id: str,
+        risk_assessment_id: str,
+        message: str,
+        evidence_bundle: EvidenceBundle | None,
+        page_context: PageContext | None = None,
+        trusted_context: TrustedRiskContext | None = None,
+    ) -> AgentSessionTurnResponse:
+        return _run_agent_session_turn_impl(
+            session_id=session_id,
+            conversation_id=conversation_id,
+            project_id=project_id,
+            risk_assessment_id=risk_assessment_id,
+            message=message,
+            evidence_bundle=evidence_bundle,
+            page_context=page_context,
+            trusted_context=trusted_context,
+        )
+
+
+_RISK_EPISODE_CONVERSATION_RUNTIME = RiskEpisodeConversationRuntime()
+
+
 def run_agent_session_turn(
     *,
     session_id: str,
@@ -90,6 +126,30 @@ def run_agent_session_turn(
     message: str,
     evidence_bundle: EvidenceBundle | None,
     page_context: PageContext | None = None,
+    trusted_context: TrustedRiskContext | None = None,
+) -> AgentSessionTurnResponse:
+    return _RISK_EPISODE_CONVERSATION_RUNTIME.run(
+        session_id=session_id,
+        conversation_id=conversation_id,
+        project_id=project_id,
+        risk_assessment_id=risk_assessment_id,
+        message=message,
+        evidence_bundle=evidence_bundle,
+        page_context=page_context,
+        trusted_context=trusted_context,
+    )
+
+
+def _run_agent_session_turn_impl(
+    *,
+    session_id: str,
+    conversation_id: str,
+    project_id: str,
+    risk_assessment_id: str,
+    message: str,
+    evidence_bundle: EvidenceBundle | None,
+    page_context: PageContext | None = None,
+    trusted_context: TrustedRiskContext | None = None,
 ) -> AgentSessionTurnResponse:
     graph = build_agent_graph()
     state = graph.invoke(
@@ -101,6 +161,7 @@ def run_agent_session_turn(
             "user_message": message,
             "evidence_bundle": evidence_bundle,
             "page_context": page_context,
+            "trusted_context": trusted_context,
             "memory": _SESSION_MEMORY_STORE.get(session_id),
             "trace_events": [],
             "reasoning_trace": [],
@@ -141,6 +202,7 @@ def build_agent_graph():
     graph.add_node("response_verifier", response_verifier)
     graph.add_node("intent_router", intent_router)
     graph.add_node("context_loader", context_loader)
+    graph.add_node("current_context_responder", current_context_responder)
     graph.add_node("smalltalk_responder", smalltalk_responder)
     graph.add_node("self_intro_responder", self_intro_responder)
     graph.add_node("clarify_responder", clarify_responder)
@@ -179,6 +241,7 @@ def build_agent_graph():
         route_after_intent,
         {
             "context_loader": "context_loader",
+            "current_context_responder": "current_context_responder",
             "smalltalk_responder": "smalltalk_responder",
             "self_intro_responder": "self_intro_responder",
             "memory_responder": "memory_responder",
@@ -202,6 +265,7 @@ def build_agent_graph():
         },
     )
     graph.add_edge("smalltalk_responder", END)
+    graph.add_edge("current_context_responder", END)
     graph.add_edge("self_intro_responder", END)
     graph.add_edge("clarify_responder", END)
     graph.add_edge("github_check_reporter", END)

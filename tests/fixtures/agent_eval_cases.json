@@ -11,6 +11,22 @@
     "quality_metrics": ["Irrelevant Answer Rate", "Intent Accuracy"]
   },
   {
+    "id": "self_intro_effective_model",
+    "user_message": "介绍你自己，你现在用的什么模型？",
+    "expected_intent": "self_intro",
+    "executable_runtime": true,
+    "deterministic_fixture": true,
+    "expected_response_contains": ["项目风险", "openai-compatible", "qwen3-coder-plus"],
+    "expected_tool_names": [],
+    "acceptance_criteria": [
+      "介绍 Agent 的项目风险定位",
+      "展示当前 Runtime 实际加载的 provider 和 model",
+      "不得为身份问题调用模型或工具"
+    ],
+    "forbidden_fabrications": ["未知模型", "GPT-4"],
+    "quality_metrics": ["Intent Accuracy", "Model Identity Accuracy"]
+  },
+  {
     "id": "capability_how_to_test",
     "user_message": "如何测试你",
     "expected_intent": "capability_explain",
@@ -66,22 +82,27 @@
     "quality_metrics": ["Irrelevant Answer Rate", "Trace Completeness"]
   },
   {
-    "id": "page_context_repository_resolution",
-    "user_message": "查看当前仓库状态",
-    "expected_intent": "github_repository_detail",
-    "page_context": {
-      "route": "/projects/project_repo_1002/agent",
-      "selected_resource": {
-        "type": "repository",
+    "id": "trusted_context_current_project",
+    "user_message": "当前项目是什么？",
+    "expected_intent": "current_context",
+    "executable_runtime": true,
+    "trusted_context": {
+      "workspace_id": "workspace_github_1001",
+      "risk_assessment_id": "risk_project_repo_1002",
+      "repository": {
         "id": "repo_1002",
-        "name": "henry-insomniac/dev-time-agent"
+        "project_id": "project_repo_1002",
+        "name": "dev-time-agent",
+        "full_name": "henry-insomniac/dev-time-agent"
       }
     },
+    "expected_response_contains": ["henry-insomniac/dev-time-agent"],
+    "expected_tool_names": [],
     "deterministic_fixture": true,
     "acceptance_criteria": [
-      "使用 PageContext 中的 selected_resource 解析当前仓库",
-      "不得把 project_id 当作用户可见仓库名",
-      "回答中的 repository_id 必须来自 fixture"
+      "使用服务端授权的 TrustedRiskContext 解析当前仓库",
+      "PageContext 不能作为事实来源",
+      "回答中的 repository_id 必须来自可信上下文"
     ],
     "forbidden_fabrications": [
       "repo_9999",
@@ -91,20 +112,61 @@
     "quality_metrics": ["Context Grounding", "Repository Resolution"]
   },
   {
-    "id": "pr_ci_agent_program_happy_path",
-    "user_message": "诊断当前 PR 的 CI 失败",
-    "expected_intent": "pr_ci_diagnosis",
+    "id": "trusted_context_current_project_issues",
+    "user_message": "查看项目的 issue",
+    "expected_intent": "github_issues_list",
+    "executable_runtime": true,
+    "trusted_context": {
+      "workspace_id": "workspace_github_1001",
+      "risk_assessment_id": "risk_project_repo_1002",
+      "repository": {
+        "id": "repo_1002",
+        "project_id": "project_repo_1002",
+        "name": "dev-time-agent",
+        "full_name": "henry-insomniac/dev-time-agent"
+      }
+    },
+    "expected_response_contains": ["Issue #42", "Add issue reader"],
+    "expected_tool_names": ["github.issues.list"],
     "deterministic_fixture": true,
-    "expected_program_tools": [
-      "github.repos.list",
-      "github.pull_requests.list",
-      "github.checks.list",
-      "github.checks.logs"
+    "acceptance_criteria": [
+      "直接使用可信仓库读取 Issue",
+      "不得先枚举仓库或猜测项目"
     ],
+    "forbidden_fabrications": ["repo_1001", "找不到仓库"],
+    "quality_metrics": ["Context Grounding", "Tool Selection Accuracy"]
+  },
+  {
+    "id": "pr_ci_agent_program_happy_path",
+    "user_message": "帮我看看 #12 PR 为什么红了？",
+    "expected_intent": "github_pr_ci_diagnosis",
+    "executable_runtime": true,
+    "trusted_context": {
+      "workspace_id": "workspace_github_1001",
+      "risk_assessment_id": "risk_project_repo_1002",
+      "repository": {
+        "id": "repo_1002",
+        "project_id": "project_repo_1002",
+        "name": "dev-time-agent",
+        "full_name": "henry-insomniac/dev-time-agent"
+      },
+      "risk_episode": {
+        "id": "risk_episode_pr_12",
+        "risk_type": "ci_blocked",
+        "status": "open",
+        "pull_request": 12,
+        "head_sha": "sha-for-pr-12",
+        "check_run_id": 812,
+        "failed_gate": "eslint"
+      }
+    },
+    "deterministic_fixture": true,
+    "expected_tool_names": ["github.checks.logs"],
+    "expected_response_contains": ["no-unused-vars", "src/planner.ts"],
     "expected_evidence_refs": ["github_live_check_run_812_logs"],
     "acceptance_criteria": [
-      "生成 AgentProgram 而不是仅使用 flat tool_names",
-      "按仓库、PR、Checks、失败日志顺序读取 fixture",
+      "使用 Risk Episode 绑定的 repository、PR、head SHA 和 check run",
+      "只读取该 Risk Episode 对应的失败日志",
       "最终回答必须引用 fixture 中的 check log evidence_ref"
     ],
     "forbidden_fabrications": [

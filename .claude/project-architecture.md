@@ -205,3 +205,6 @@ Agent Runtime 测试目录。测试通过公开包接口验证行为，避免绑
 | 2026-06-13 | 增加可展示 reasoning_trace | 前端需要默认折叠、手动展开的可审计思考过程，而不是暴露原始模型推理 | `uv run ruff check . && uv run pytest -q` |
 | 2026-06-13 | 增加 GitHub 只读工具入口 | Agent 需要在用户询问 GitHub 项目可见性时先检查授权并读取仓库列表，而不是凭空说明能力 | `uv run pytest tests/test_agent_llm_loop.py -q` |
 | 2026-06-15 | 扩展 GitHub 对象级只读能力 | Agent 需要能查询授权仓库的 repo、PR、Issue、Checks，而不是把 GitHub 查询误判为风险澄清 | `uv run pytest tests/test_tool_layer.py -q` |
+# 2026-07 Runtime deepening
+
+`RiskEpisodeConversationRuntime` 是新的深 Module：公共 Interface 只接收会话消息和 `TrustedRiskContext`，内部隐藏确定性路由、workspace model Adapter、GitHub capability execution 与 Grounded Turn 验证。Server 与 Runtime 之间的 Seam 由 Pydantic/JSON schema 固定；不再让 PageContext、server classifier 和 LLM planner 三处重复决定同一仓库。

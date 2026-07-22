@@ -3,7 +3,7 @@ from typing import Any
 from dev_time_agent.capability_registry import build_default_capability_registry
 from dev_time_agent.conversation import evidence_refs_from_bundle
 from dev_time_agent.docs_retrieval import retrieve_docs
-from dev_time_agent.schemas import EvidenceBundle, PageContext
+from dev_time_agent.schemas import EvidenceBundle, PageContext, TrustedRiskContext
 
 
 CAPABILITIES = [
@@ -38,6 +38,7 @@ def assemble_agent_context(
     evidence_bundle: EvidenceBundle | None,
     available_tools: list[str],
     page_context: PageContext | None = None,
+    trusted_context: TrustedRiskContext | None = None,
     tool_results: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -48,6 +49,7 @@ def assemble_agent_context(
         "project_id": project_id,
         "risk_assessment_id": risk_assessment_id,
         "page_context": summarize_page_context(page_context),
+        "trusted_context": summarize_trusted_context(trusted_context),
         "session_memory": memory,
         "available_tools": available_tools,
         "capability_registry": capability_registry_context(),
@@ -92,6 +94,17 @@ def summarize_page_context(page_context: PageContext | None) -> dict[str, Any]:
         "selected_resource": selected_resource,
         "visible_fields": page_context.visible_fields,
         "recent_actions": page_context.recent_actions,
+    }
+
+
+def summarize_trusted_context(
+    trusted_context: TrustedRiskContext | None,
+) -> dict[str, Any]:
+    if trusted_context is None:
+        return {"available": False}
+    return {
+        "available": True,
+        **trusted_context.model_dump(),
     }
 
 

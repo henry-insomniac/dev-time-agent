@@ -157,6 +157,8 @@ class OpenAICompatibleConversationLLM:
 
 def build_conversation_llm_from_env(
     environment: Mapping[str, str] | None = None,
+    *,
+    workspace_id: str | None = None,
 ) -> OpenAICompatibleConversationLLM | None:
     loaded_environment = environment or os.environ
     server_internal_base_url = loaded_environment.get("DEV_TIME_SERVER_INTERNAL_BASE_URL")
@@ -164,4 +166,6 @@ def build_conversation_llm_from_env(
         return None
 
     server_client = HTTPServerClient(server_internal_base_url)
-    return OpenAICompatibleConversationLLM(server_client.get_llm_provider_config())
+    return OpenAICompatibleConversationLLM(
+        server_client.get_llm_provider_config(workspace_id)
+    )

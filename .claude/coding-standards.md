@@ -64,3 +64,11 @@
 - 证据不足、模型失败、schema 校验失败是否有明确状态。
 - prompt 变更是否有 replay 或 snapshot 验证。
 - 是否存在绕过 `dev-time-server` 权限和事实源边界的读取或写入。
+# Agent Runtime invariants (2026-07)
+
+- 领域事实只从 `TrustedRiskContext`、EvidenceBundle 或实际 tool result 进入回答。
+- PageContext 不得用于授权或覆盖 trusted repository。
+- 一轮只解析一次 workspace-scoped model adapter，并在全轮复用。
+- PR 诊断不得选择 repo-wide first failed check；必须绑定 Risk Episode check run。
+- 配置 Runtime 时禁止 Server pre-router、direct LLM bypass 和 silent fallback。
+- 新增 Agent bad case 时必须补可执行公共接口 eval，而不只是 fixture metadata。

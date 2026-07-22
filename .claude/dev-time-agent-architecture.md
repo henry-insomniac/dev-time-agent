@@ -325,3 +325,16 @@ dev-time-agent/
 - 不让 LLM 直接决定最终风险分。
 - 不在 Agent 服务中维护 canonical 业务状态。
 - 不把 dev-time-agent 做成独立面向用户的产品。
+
+## 2026-07 Risk Episode Conversation Runtime
+
+`RiskEpisodeConversationRuntime.run(conversation_id, user_message, TrustedRiskContext) -> GroundedTurn` 是风险会话的公共 Interface。这个 Module 的 Depth 来自一条稳定调用：内部封装模型选择、确定性意图、工具执行、证据约束和回答验证。
+
+- `TrustedRiskContext` 是 Server/Runtime Seam；Server 是唯一授权 Adapter。
+- `PageContext` 只提供 UI locality，不进入事实或权限判断。
+- 当前项目、Agent 身份和已生效模型走确定性路径。
+- PR 风险诊断必须使用 Risk Episode 的 repository、PR、head SHA、failed gate 与 check run ID。
+- provider/model 按 Workspace 在一轮开始时加载并固定，避免同一轮模型漂移。
+- 配置 Runtime 后，Server 不再预路由 GitHub 问题，也不再直连 LLM 或静默回退。
+
+这条 Seam 的 Leverage 是让 GitHub、风险解释和未来执行动作共享同一 provenance contract，而不是继续扩展分类器与 prompt 分支。

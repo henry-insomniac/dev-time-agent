@@ -257,3 +257,8 @@ Dev Time 的 Agent 不是泛用聊天助手，而是项目风险驱动的工作�
 5. 增加 tool layer 指标：工具选择、参数合法性、失败恢复。
 6. 增加 human-in-the-loop 指标：写操作确认、拒绝处理、审计完整性。
 7. 增加长任务 checkpoint 指标：恢复、进度、超时处理。
+# 2026-07 Executable Runtime Eval Gate
+
+核心 bad case 不能只检查 fixture ID。CI 必须真实调用 `/agent/sessions/{id}/turns`，至少覆盖：可信当前项目、可信项目 Issue、Risk Episode PR 日志、Agent 生效模型介绍。断言 intent、tool sequence、evidence refs、必含内容与 forbidden fabrications。
+
+新增验收指标：Model Identity Accuracy = 自我介绍中 provider/model 与该轮 Runtime adapter 配置一致，目标 100%。新增归因约束：Risk Episode Attribution Accuracy = PR/head/check run 与可信上下文一致，目标 100%。

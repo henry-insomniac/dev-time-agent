@@ -7,6 +7,7 @@ from dev_time_agent.schemas import (
     PageContext,
     ReasoningTraceStep,
     ResponseVerification,
+    TrustedRiskContext,
 )
 
 
@@ -46,6 +47,9 @@ class AgentState(TypedDict, total=False):
     evidence_refs: list[str]
     memory: dict[str, Any]
     page_context: PageContext | None
+    trusted_context: TrustedRiskContext | None
+    active_model: dict[str, str]
+    runtime_llm: ConversationLLM | None
     agent_context: dict[str, Any]
     agent_plan: AgentPlan
     draft_response: AgentDraftResponse

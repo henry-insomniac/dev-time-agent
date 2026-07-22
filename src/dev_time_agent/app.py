@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from dev_time_agent.conversation import classify_intent
 from dev_time_agent.graph_runtime import run_agent_session_turn
-from dev_time_agent.schemas import EvidenceBundle, PageContext
+from dev_time_agent.schemas import EvidenceBundle, PageContext, TrustedRiskContext
 
 
 class ConversationIntentPayload(BaseModel):
@@ -20,6 +20,7 @@ class ConversationTurnPayload(BaseModel):
     message: str
     evidence_bundle: EvidenceBundle | None = None
     page_context: PageContext | None = None
+    trusted_context: TrustedRiskContext | None = None
 
 
 app = FastAPI(title="Dev Time Agent Runtime")
@@ -43,6 +44,7 @@ def conversation_turn(payload: ConversationTurnPayload):
         message=payload.message,
         evidence_bundle=payload.evidence_bundle,
         page_context=payload.page_context,
+        trusted_context=payload.trusted_context,
     )
     return {
         "conversation_id": graph_response.conversation_id,
@@ -66,4 +68,5 @@ def agent_session_turn(session_id: str, payload: ConversationTurnPayload):
         message=payload.message,
         evidence_bundle=payload.evidence_bundle,
         page_context=payload.page_context,
+        trusted_context=payload.trusted_context,
     )

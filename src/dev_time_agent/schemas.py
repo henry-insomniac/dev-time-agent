@@ -96,6 +96,33 @@ class PageContext(BaseModel):
     recent_actions: list[dict] = Field(default_factory=list)
 
 
+class TrustedRepositoryContext(BaseModel):
+    id: str
+    project_id: str
+    name: str
+    full_name: str
+
+
+class TrustedRiskEpisodeContext(BaseModel):
+    id: str
+    risk_type: str
+    status: str
+    pull_request: int
+    pull_request_url: str = ""
+    head_sha: str
+    check_run_id: int = 0
+    failed_gate: str = ""
+    evidence_url: str = ""
+    last_verified_at: str = ""
+
+
+class TrustedRiskContext(BaseModel):
+    workspace_id: str
+    risk_assessment_id: str
+    repository: TrustedRepositoryContext
+    risk_episode: TrustedRiskEpisodeContext | None = None
+
+
 class ConversationTurnRequest(BaseModel):
     conversation_id: str
     project_id: str

@@ -342,3 +342,8 @@ action_suggestion.create
 ```text
 下一步会把 planner 升级为严格 Intent Schema，支持 multi-step plan，并建设 intent eval 数据集。这样意图识别就不是靠 prompt 感觉，而是有协议、有执行计划、有回归测试。
 ```
+# 2026-07 确定性意图边界
+
+`current_context`、`self_intro` 以及带 Trusted Risk Context 的 Issue/PR/Checks 查询在 LLM planner 之前路由。这些意图的答案由可信上下文或工具结果唯一决定，模型没有额外判断价值。
+
+PR CI 诊断只有在消息 PR 编号与 Risk Episode 的 `pull_request` 一致时才读取 `check_run_id`；不一致时必须澄清。无 Risk Episode 的旧路径仅作为未配置 Runtime 的兼容 Adapter。

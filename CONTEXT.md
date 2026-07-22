@@ -203,3 +203,15 @@ _Avoid_: 自动重试、模糊确认、重复执行、默认重跑全部 jobs
 **Action Audit Record**:
 Confirmed Rerun 的不可省略记录，包含发起人、目标、GitHub run ID、确认时间、实际执行范围、结果和错误。执行请求失败时，原 Delivery Risk 保持 Open 或 Acknowledged，不能显示为成功，也不能自动 Resolved。
 _Avoid_: 仅修改本地状态、无 GitHub 执行证据、失败后伪装完成
+
+**Trusted Risk Context**:
+Server 从已认证 Workspace、Risk Assessment 和 Connected Repository 生成的只读 Runtime 输入。它可携带 Risk Episode、PR、head SHA、失败 Delivery Gate 与 check run ID；PageContext 只能作为 UI hint。
+_Avoid_: 枚举全部仓库后猜项目、使用 PageContext 授权、跨 Workspace 加载模型
+
+**Risk Episode Conversation Runtime**:
+围绕单个 Delivery Risk 运行的深模块，消费 Trusted Risk Context 并产出 Grounded Turn。PR 诊断直接读取 Risk Episode 绑定的 check run；当前项目和 Agent 身份采用确定性路径。
+_Avoid_: one-shot prompt 猜测、仓库第一个失败检查、服务端预路由、通用聊天
+
+**Grounded Turn**:
+包含 Markdown 回答、intent、可信实体、工具调用、证据引用和 Runtime 模型身份的一轮输出。自我介绍中的 provider/model 来自该轮实际加载的 adapter 配置。
+_Avoid_: 模型自行声称型号、证据引用被草稿覆盖、工具调用与回答对象不一致

@@ -28,6 +28,9 @@ def test_http_server_client_claims_fetches_evidence_and_completes_job() -> None:
         assert llm_provider.model == "gpt-4.1"
         assert llm_provider.api_key == "sk-test"
 
+        workspace_llm_provider = client.get_llm_provider_config("workspace_123")
+        assert workspace_llm_provider.model == "workspace-gpt-4.1"
+
         client.complete_agent_job(
             AgentArtifact(
                 job_id=job.job_id,
@@ -130,6 +133,17 @@ def fake_dev_time_server(state: dict[str, Any]) -> Iterator[str]:
                         "base_url": "http://127.0.0.1:11434/v1",
                         "model": "gpt-4.1",
                         "api_key": "sk-test",
+                    }
+                )
+                return
+
+            if self.path == "/internal/llm-provider-config?workspace_id=workspace_123":
+                self.send_json(
+                    {
+                        "provider": "openai",
+                        "base_url": "http://127.0.0.1:11434/v1",
+                        "model": "workspace-gpt-4.1",
+                        "api_key": "sk-workspace-test",
                     }
                 )
                 return

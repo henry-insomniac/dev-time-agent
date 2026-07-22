@@ -77,6 +77,8 @@ def intent_router(state: AgentState) -> AgentState:
 
 def route_after_intent(state: AgentState) -> str:
     intent = state.get("intent")
+    if intent == "current_context":
+        return "current_context_responder"
     if intent == "smalltalk":
         return "smalltalk_responder"
     if intent == "self_intro":
@@ -171,18 +173,58 @@ def smalltalk_responder(state: AgentState) -> AgentState:
 
 
 def self_intro_responder(state: AgentState) -> AgentState:
+    active_model = state.get("active_model", {})
+    provider = active_model.get("provider", "deterministic")
+    model = active_model.get("model", "rules-v1")
     return {
         **state,
         "response": (
-            "我是 Dev Time Agent，定位是项目风险驱动助手。"
-            "我会围绕项目、PR、测试、CI 和交付阻塞来识别风险、解释证据、"
-            "生成行动计划，并在需要执行工具前请求确认。"
+            "## Dev Time Agent\n\n"
+            "我是面向研发交付的**项目风险 Agent**。我基于当前授权项目与风险事件，"
+            "定位 PR、测试、CI 和交付阻塞，并给出有证据依据的解释与行动建议。\n\n"
+            f"- **当前生效模型**：`{provider} / {model}`\n"
+            "- **事实边界**：只把可信项目上下文和工具结果当作事实\n"
+            "- **执行边界**：写操作会先生成草稿，并在执行前请求确认"
         ),
         "evidence_refs": [],
         "current_node": "self_intro_responder",
         "trace_events": [
             *state.get("trace_events", []),
             {"node": "self_intro_responder", "title": "生成自我介绍回复"},
+        ],
+    }
+
+
+def current_context_responder(state: AgentState) -> AgentState:
+    trusted_context = state.get("trusted_context")
+    if trusted_context is None:
+        return {
+            **state,
+            "intent": "clarify",
+            "response": "当前会话还没有绑定可信项目，请先从具体项目的风险页进入 Agent。",
+            "evidence_refs": [],
+            "current_node": "current_context_responder",
+            "trace_events": [
+                *state.get("trace_events", []),
+                {"node": "current_context_responder", "title": "缺少可信项目上下文"},
+            ],
+        }
+    repository = trusted_context.repository.model_dump()
+    return {
+        **state,
+        "domain": "project_context",
+        "entities": {"repository": repository},
+        "capabilities": [],
+        "response": (
+            f"当前项目是 **{repository['full_name']}**。\n\n"
+            f"- 项目：`{repository['project_id']}`\n"
+            f"- Connected Repository：`{repository['id']}`"
+        ),
+        "evidence_refs": [],
+        "current_node": "current_context_responder",
+        "trace_events": [
+            *state.get("trace_events", []),
+            {"node": "current_context_responder", "title": "读取可信项目上下文"},
         ],
     }
 
@@ -356,19 +398,20 @@ def github_pull_request_reporter(state: AgentState) -> AgentState:
     tool_calls = list(state.get("tool_calls", []))
     trace_events = list(state.get("trace_events", []))
 
-    repos_result = tool_registry.run("github.repos.list", {})
-    repositories = repos_result.data.get("repositories", [])
-    tool_calls.append(
-        {
-            "name": "github.repos.list",
-            "status": "succeeded",
-            "input": {},
-            "evidence_refs": [],
-        }
-    )
-    trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
-
-    repository = resolve_repository(state["user_message"], repositories)
+    repository = trusted_repository_for_state(state)
+    if repository is None:
+        repos_result = tool_registry.run("github.repos.list", {})
+        repositories = repos_result.data.get("repositories", [])
+        tool_calls.append(
+            {
+                "name": "github.repos.list",
+                "status": "succeeded",
+                "input": {},
+                "evidence_refs": [],
+            }
+        )
+        trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
+        repository = resolve_repository(state["user_message"], repositories)
     if repository is None:
         return {
             **state,
@@ -436,19 +479,20 @@ def github_issue_reporter(state: AgentState) -> AgentState:
     tool_calls = list(state.get("tool_calls", []))
     trace_events = list(state.get("trace_events", []))
 
-    repos_result = tool_registry.run("github.repos.list", {})
-    repositories = repos_result.data.get("repositories", [])
-    tool_calls.append(
-        {
-            "name": "github.repos.list",
-            "status": "succeeded",
-            "input": {},
-            "evidence_refs": [],
-        }
-    )
-    trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
-
-    repository = resolve_repository(state["user_message"], repositories)
+    repository = trusted_repository_for_state(state)
+    if repository is None:
+        repos_result = tool_registry.run("github.repos.list", {})
+        repositories = repos_result.data.get("repositories", [])
+        tool_calls.append(
+            {
+                "name": "github.repos.list",
+                "status": "succeeded",
+                "input": {},
+                "evidence_refs": [],
+            }
+        )
+        trace_events.append({"node": "tool_executor", "title": "列出 GitHub 仓库"})
+        repository = resolve_repository(state["user_message"], repositories)
     if repository is None:
         return {
             **state,
@@ -597,6 +641,16 @@ def github_pr_ci_diagnoser(state: AgentState) -> AgentState:
     tool_calls = list(state.get("tool_calls", []))
     trace_events = list(state.get("trace_events", []))
 
+    trusted_context = state.get("trusted_context")
+    if trusted_context is not None and trusted_context.risk_episode is not None:
+        return diagnose_trusted_risk_episode(
+            state,
+            tool_registry,
+            pr_number,
+            tool_calls,
+            trace_events,
+        )
+
     repos_result = tool_registry.run("github.repos.list", {})
     repositories = repos_result.data.get("repositories", [])
     tool_calls.append(
@@ -700,6 +754,89 @@ def github_pr_ci_diagnoser(state: AgentState) -> AgentState:
         "capabilities": ["github.checks.logs"],
         "response": response,
         "evidence_refs": [*pr_evidence_refs, *checks_evidence_refs, *log_evidence_refs],
+        "tool_calls": tool_calls,
+        "current_node": "github_pr_ci_diagnoser",
+        "trace_events": trace_events,
+    }
+
+
+def diagnose_trusted_risk_episode(
+    state: AgentState,
+    tool_registry: ToolRegistry,
+    pr_number: int | None,
+    tool_calls: list[dict],
+    trace_events: list[dict],
+) -> AgentState:
+    trusted_context = state["trusted_context"]
+    episode = trusted_context.risk_episode
+    assert episode is not None
+    repository = trusted_context.repository.model_dump()
+    if pr_number is None or pr_number != episode.pull_request:
+        return {
+            **state,
+            "response": (
+                f"当前可信风险事件绑定的是 PR #{episode.pull_request}；"
+                "请确认要诊断的 PR 编号，避免把其他 CI 失败错误归因到当前 PR。"
+            ),
+            "evidence_refs": [],
+            "tool_calls": tool_calls,
+            "current_node": "github_pr_ci_diagnoser",
+            "trace_events": trace_events,
+        }
+    if episode.check_run_id <= 0:
+        return {
+            **state,
+            "domain": "github",
+            "entities": {
+                "repository": repository_entity(repository),
+                "pr_number": pr_number,
+                "head_sha": episode.head_sha,
+            },
+            "capabilities": ["github.checks.logs"],
+            "response": (
+                f"PR #{pr_number} 的风险事件已绑定到 head `{episode.head_sha}`，"
+                "但当前没有可信的 check run ID，不能安全读取失败日志。"
+            ),
+            "evidence_refs": [],
+            "tool_calls": tool_calls,
+            "current_node": "github_pr_ci_diagnoser",
+            "trace_events": trace_events,
+        }
+
+    tool_input = {
+        "repository_id": repository["id"],
+        "run_id": episode.check_run_id,
+    }
+    logs_result = tool_registry.run("github.checks.logs", tool_input)
+    tool_calls.append(
+        {
+            "name": "github.checks.logs",
+            "status": "succeeded",
+            "input": tool_input,
+            "evidence_refs": logs_result.evidence_refs,
+        }
+    )
+    trace_events.append(
+        {"node": "tool_executor", "title": "读取风险事件绑定的 Check 日志"}
+    )
+    check = {
+        "run_id": episode.check_run_id,
+        "name": episode.failed_gate,
+        "url": episode.evidence_url,
+    }
+    return {
+        **state,
+        "domain": "github",
+        "entities": {
+            "repository": repository_entity(repository),
+            "risk_episode_id": episode.id,
+            "pr_number": pr_number,
+            "head_sha": episode.head_sha,
+            "run_id": episode.check_run_id,
+        },
+        "capabilities": ["github.checks.logs"],
+        "response": format_ci_log_diagnosis(pr_number, check, logs_result.data),
+        "evidence_refs": logs_result.evidence_refs,
         "tool_calls": tool_calls,
         "current_node": "github_pr_ci_diagnoser",
         "trace_events": trace_events,
@@ -846,6 +983,13 @@ def format_repository_detail(repository: dict) -> str:
 
 def evidence_refs_from_pull_requests(pull_requests: list[dict]) -> list[str]:
     return evidence_refs_from_items(pull_requests)
+
+
+def trusted_repository_for_state(state: AgentState) -> dict | None:
+    trusted_context = state.get("trusted_context")
+    if trusted_context is None:
+        return None
+    return trusted_context.repository.model_dump()
 
 
 def evidence_refs_from_items(items: list[dict]) -> list[str]:

@@ -1,6 +1,7 @@
 import json
 from typing import Any
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from dev_time_agent.schemas import (
@@ -84,8 +85,11 @@ class HTTPServerClient:
     def create_action_suggestion(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", "/internal/action-suggestions", payload)
 
-    def get_llm_provider_config(self) -> LLMProviderConfig:
-        payload = self._request_json("GET", "/internal/llm-provider-config")
+    def get_llm_provider_config(self, workspace_id: str | None = None) -> LLMProviderConfig:
+        path = "/internal/llm-provider-config"
+        if workspace_id:
+            path += "?" + urlencode({"workspace_id": workspace_id})
+        payload = self._request_json("GET", path)
         return LLMProviderConfig.model_validate(payload)
 
     def complete_agent_job(self, artifact: AgentArtifact) -> None:

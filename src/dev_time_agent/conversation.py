@@ -91,6 +91,21 @@ def classify_intent(message: str) -> IntentClassification:
         )
     if any(
         keyword in normalized
+        for keyword in {
+            "当前项目是什么",
+            "现在的项目是什么",
+            "这是哪个项目",
+            "当前仓库是什么",
+            "这是哪个仓库",
+        }
+    ):
+        return IntentClassification(
+            intent="current_context",
+            confidence=1,
+            requires_evidence=False,
+        )
+    if any(
+        keyword in normalized
         for keyword in {"当前状态", "项目状态", "现在状态", "现在怎么样"}
     ):
         return IntentClassification(
