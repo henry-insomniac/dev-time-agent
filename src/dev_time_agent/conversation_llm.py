@@ -2,6 +2,7 @@ import json
 import os
 from collections.abc import Mapping
 from typing import Any
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from dev_time_agent.client import HTTPServerClient
@@ -166,6 +167,10 @@ def build_conversation_llm_from_env(
         return None
 
     server_client = HTTPServerClient(server_internal_base_url)
-    return OpenAICompatibleConversationLLM(
-        server_client.get_llm_provider_config(workspace_id)
-    )
+    try:
+        config = server_client.get_llm_provider_config(workspace_id)
+    except HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    return OpenAICompatibleConversationLLM(config)

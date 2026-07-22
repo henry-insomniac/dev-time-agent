@@ -166,6 +166,7 @@ def classify_intent(message: str) -> IntentClassification:
         keyword in normalized
         for keyword in {
             "介绍你自己",
+            "介绍自己",
             "你是谁",
             "你能做什么",
             "自我介绍",

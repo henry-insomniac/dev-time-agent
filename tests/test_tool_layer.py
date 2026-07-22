@@ -823,6 +823,39 @@ def test_agent_intro_reports_the_effective_runtime_model() -> None:
     assert "qwen3-coder-plus" in body["agent_response"]
 
 
+def test_agent_intro_uses_deterministic_identity_when_workspace_has_no_model(
+    monkeypatch,
+) -> None:
+    with fake_dev_time_server() as base_url:
+        monkeypatch.setenv("DEV_TIME_SERVER_INTERNAL_BASE_URL", base_url)
+        client = TestClient(app)
+
+        response = client.post(
+            "/agent/sessions/session_intro_without_model/turns",
+            json={
+                "conversation_id": "conversation_intro_without_model",
+                "project_id": "project_repo_1265191048",
+                "risk_assessment_id": "risk_project_repo_1265191048",
+                "message": "介绍自己",
+                "trusted_context": {
+                    "workspace_id": "workspace_github_178656317",
+                    "risk_assessment_id": "risk_project_repo_1265191048",
+                    "repository": {
+                        "id": "repo_1265191048",
+                        "project_id": "project_repo_1265191048",
+                        "name": "dev-time",
+                        "full_name": "henry-insomniac/dev-time",
+                    },
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "self_intro"
+    assert "deterministic / rules-v1" in body["agent_response"]
+
+
 def test_agent_session_turn_lists_repository_checks_through_fallback_tools() -> None:
     from fake_agent_llm import fake_dev_time_server as fake_github_server
 

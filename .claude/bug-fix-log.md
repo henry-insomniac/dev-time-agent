@@ -166,3 +166,17 @@ LangGraph runtime 每轮调用只使用当前请求状态，上一轮风险摘�
 - 可执行 eval 真实调用 Runtime 公共接口并断言四个核心 bad case。
 - `uv run pytest -q`
 - `uv run ruff check .`
+
+## 2026-07-22 - 未配置 Workspace 模型导致自我介绍接口 5xx
+
+### 现象
+
+已配置 Agent Runtime、但当前 Workspace 没有 active LLM provider 时，请求“介绍自己”会在 context assembler 中因内部模型配置 404 而失败。
+
+### 原因与修复
+
+Runtime 在确定性意图路由前急切加载模型，却没有把配置 404 映射为合法的 deterministic adapter。现在只对 404 返回无 LLM，并由自我介绍明确展示 `deterministic / rules-v1`；其他 HTTP 或网络错误继续显式失败。
+
+### 验证
+
+新增同生产 payload 结构的回归测试，使用 Workspace-scoped 模型配置 404，断言自我介绍返回 200 和 deterministic identity。
